@@ -52,8 +52,28 @@ jobs:
       - name: Validate OpenAPI schema
         run: python manage.py spectacular --validate --file /tmp/openapi.yml
 
+  verify-ai:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-tutor
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/ai-tutor/package-lock.json
+      - name: Install AI service dependencies
+        run: npm ci
+      - name: Build AI service without production credentials
+        run: npm run build
+        env:
+          OPENAI_API_KEY: build-only-placeholder
+          AI_DB_PROVIDER: sqlite
+
   publish:
-    needs: verify
+    needs: [verify, verify-ai]
     runs-on: ubuntu-latest
     permissions:
       contents: read

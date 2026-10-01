@@ -1,0 +1,49 @@
+node_modules
+.next
+.next-build
+.env.local
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Python virtualenvs and caches
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Generated media/artifacts
+**/runs
+**/*.wav
+**/*.mp3
+**/*.mp4
+**/*.webm
+**/*.tmp
+
+# Local model/data caches
+MuseTalk
+local-stt/.cache
+local-stt/.venv
+local-tts/.venv
+local-avatar/.venv
+
+# Local runtime data
+/data
+/tmp
+/debug-next.log
+tsconfig.tsbuildinfo
+ai-module-export
+
+# Local documents/reports
+*.docx
+!README.docx
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vercel
