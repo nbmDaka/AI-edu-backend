@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  sessionId      String         @id @map("session_id")
+  apiKeyHash     String         @map("api_key_hash")
+  title          String?
+  createdAt      DateTime       @map("created_at")
+  lastActivityAt DateTime       @map("last_activity_at")
+  messages       Message[]
+  requestEvents  RequestEvent[]
+
+  @@map("sessions")
+}
+
+model Message {
+  id              String   @id
+  sessionId       String   @map("session_id")
+  role            String
+  contentRaw      String   @map("content_raw")
+  contentRedacted String   @map("content_redacted")
+  language        String
+  createdAt       DateTime @map("created_at")
+  session         Session  @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
+  @@index([sessionId, createdAt], map: "idx_messages_session_created")
+  @@map("messages")
+}
+
+model RequestEvent {
+  id                    String    @id
+  sessionId             String    @map("session_id")
+  apiKeyHash            String    @map("api_key_hash")
+  route                 String
+  status                Int
+  startedAt             DateTime  @map("started_at")
+  finishedAt            DateTime? @map("finished_at")
+  latencyMs             Int?      @map("latency_ms")
+  guardrailBlocked      Boolean   @default(false) @map("guardrail_blocked")
+  guardrailReasons      Json      @default("[]") @map("guardrail_reasons")
+  injectionScore        Float     @default(0) @map("injection_score")
+  blockedStage          String?   @map("blocked_stage")
+  retrievalQuery        String?   @map("retrieval_query")
+  retrievedChunkIds     Json?     @map("retrieved_chunk_ids")
+  retrievalScores       Json?     @map("retrieval_scores")
+  retrievalFallbackUsed Boolean   @default(false) @map("retrieval_fallback_used")
+  promptRaw             String?   @map("prompt_raw")
+  promptRedacted        String?   @map("prompt_redacted")
+  responseRaw           String?   @map("response_raw")
+  responseRedacted      String?   @map("response_redacted")
+  promptTokens          Int       @default(0) @map("prompt_tokens")
+  completionTokens      Int       @default(0) @map("completion_tokens")
+  embeddingTokens       Int       @default(0) @map("embedding_tokens")
+  totalTokens           Int       @default(0) @map("total_tokens")
+  estimatedCostUsd      Float     @default(0) @map("estimated_cost_usd")
+  metadataJson          Json      @default("{}") @map("metadata_json")
+  session               Session   @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
+  @@index([sessionId, startedAt(sort: Desc)], map: "idx_request_events_session_started")
+  @@map("request_events")
+}
+
+model QuotaCounter {
+  apiKeyHash  String @map("api_key_hash")
+  bucketType  String @map("bucket_type")
+  bucketStart String @map("bucket_start")
+  requests    Int    @default(0)
+  tokens      Int    @default(0)
+  costUsd     Float  @default(0) @map("cost_usd")
+
+  @@id([apiKeyHash, bucketType, bucketStart])
+  @@index([bucketType, bucketStart], map: "idx_quota_counters_type_start")
+  @@map("quota_counters")
+}
+
+model Course {
+  courseId        String               @id @map("course_id")
+  apiKeyHash      String               @map("api_key_hash")
+  title           String?
+  activeVersionId String?              @map("active_version_id")
+  createdAt       DateTime             @map("created_at")
+  updatedAt       DateTime             @map("updated_at")
+  chunks          CourseChunk[]
+  indexVersions   CourseIndexVersion[]
+  materials       CourseMaterial[]
+
+  @@map("courses")
+}
+
+model CourseIndexVersion {
+  id             String           @id
+  courseId       String           @map("course_id")
+  apiKeyHash     String           @map("api_key_hash")
+  versionLabel   String?          @map("version_label")
+  status         String
+  sourceCount    Int              @default(0) @map("source_count")
+  chunkCount     Int              @default(0) @map("chunk_count")
+  embeddingModel String?          @map("embedding_model")
+  createdAt      DateTime         @map("created_at")
+  updatedAt      DateTime         @map("updated_at")
+  chunks         CourseChunk[]
+  course         Course           @relation(fields: [courseId], references: [courseId], onDelete: Cascade)
+  materials      CourseMaterial[]
+
+  @@index([courseId, createdAt(sort: Desc)], map: "idx_course_versions_course_created")
+  @@map("course_index_versions")
+}
+
+model CourseMaterial {
+  id            String             @id
+  versionId     String             @map("version_id")
+  courseId      String             @map("course_id")
+  fileName      String             @map("file_name")
+  mediaType     String             @map("media_type")
+  sourceKind    String             @map("source_kind")
+  sourceHash    String?            @map("source_hash")
+  structureJson Json               @default("{}") @map("structure_json")
+  extractedText String             @map("extracted_text")
+  createdAt     DateTime           @map("created_at")
+  chunks        CourseChunk[]
+  course        Course             @relation(fields: [courseId], references: [courseId], onDelete: Cascade)
+  version       CourseIndexVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, sourceHash], map: "idx_course_materials_hash")
+  @@map("course_materials")
+}
+
+model CourseChunk {
+  id               String                 @id
+  versionId        String                 @map("version_id")
+  courseId         String                 @map("course_id")
+  materialId       String                 @map("material_id")
+  chunkIndex       Int                    @map("chunk_index")
+  label            String
+  section          String?
+  text             String
+  tokenEstimate    Int                    @default(0) @map("token_estimate")
+  embeddingJson    Json                   @map("embedding_json")
+  createdAt        DateTime               @map("created_at")
+  embedding_vector Unsupported("vector")?
+  course           Course                 @relation(fields: [courseId], references: [courseId], onDelete: Cascade)
+  material         CourseMaterial         @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  version          CourseIndexVersion     @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId, materialId, chunkIndex], map: "idx_course_chunks_version_material")
+  @@index([embedding_vector], map: "idx_course_chunks_embedding_hnsw")
+  @@map("course_chunks")
+}

@@ -1,0 +1,13 @@
+{
+  "name": "ai-edu-local-avatar-prototype",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test check-stream-playback.mjs check-body-gestures.mjs check-local-config.cjs",
+    "viewer": "node --env-file=.env serve-viewer.cjs",
+    "gateway": "node --env-file=.env stream-gateway.cjs"
+  },
+  "dependencies": { "openai": "4.104.0", "three": "0.184.0" }
+}

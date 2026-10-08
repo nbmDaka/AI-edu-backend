@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kevin - локальный тест</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}body{margin:0;font:15px system-ui;color:#202323;background:#f1f3f3}header{height:64px;padding:0 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #d5dada;background:white}h1{font-size:22px;margin:0}#status{margin-left:auto;color:#596562;font-size:13px}main{display:grid;grid-template-columns:minmax(0,1fr) 280px;height:calc(100dvh - 64px)}#stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%}aside{background:white;border-left:1px solid #d5dada;padding:24px;overflow:auto}h2{font-size:16px;margin:0 0 20px}label{display:block;margin:18px 0;color:#4d5552}input[type=range]{width:100%;accent-color:#207c62;margin-top:10px}button,select{font:inherit;border:1px solid #c8d1cd;background:#f7f9f8;color:#243c32;border-radius:6px;padding:10px;width:100%;margin:5px 0;cursor:pointer}button.primary{background:#207c62;color:white;border-color:#207c62}button:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:8px}.icon{width:44px;flex:none;display:flex;align-items:center;justify-content:center}button svg{height:20px;width:20px;stroke:currentColor;fill:none;stroke-width:2}#error{position:absolute;top:20px;left:20px;right:20px;background:#fff;padding:16px;border:1px solid #c63d46;display:none}#file{max-width:100%;font:12px system-ui}#audioStatus{font-size:13px;color:#5a635f;min-height:34px;margin:8px 0}.meta{font-size:12px;color:#727c77;margin-top:28px}@media(max-width:700px){header{padding:0 16px}main{height:auto;display:block}#stage{height:60dvh;min-height:360px}aside{border-left:0;border-top:1px solid #d5dada;padding:20px}#status{max-width:55%;text-align:right}}
+</style>
+<script>if(new URLSearchParams(location.search).get('embed')==='1')document.documentElement.classList.add('embed');</script>
+<style>html.embed body header,html.embed body aside{display:none}html.embed main{display:block;height:100dvh}html.embed #stage{height:100dvh;min-height:0}</style>
+<header><h1>Kevin</h1><span id="status">Загрузка модели...</span></header>
+<main><section id="stage"><div id="error" role="alert"></div></section><aside>
+<h2>Лицо и голос</h2>
+<label>Открытие рта<input id="jaw" type="range" min="0" max="1" step=".01" value="0"></label>
+<label>Улыбка<input id="smile" type="range" min="0" max="1" step=".01" value="0"></label>
+<label><input id="blink" type="checkbox" checked> Моргание</label>
+<label>Артикуляция<select id="viseme"><option value="">Нейтральная</option></select></label>
+<div class="row"><button id="play" class="primary" disabled>Пробная запись</button><button id="stop" class="icon" title="Остановить" aria-label="Остановить">&#9632;</button></div>
+<div id="audioStatus" aria-live="polite">Готов к воспроизведению</div>
+<label>Аудиофайл<input id="file" type="file" accept="audio/*"></label>
+<button id="reset">Сбросить</button><div class="meta"><span id="engineStatus">Подключение Audio2Face...</span><br>Локальный тест · CC5 Trial</div>
+</aside></main>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+<script type="module" src="/viewer.js"></script>
+</html>

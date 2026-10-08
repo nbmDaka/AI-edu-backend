@@ -6,6 +6,7 @@ from apps.education import views as education
 from apps.lessons import views as lessons
 from apps.assessments import views as assessments
 from apps.mediafiles import views as mediafiles
+from apps.tutor.views import TutorChatView, TutorSpeechView, TutorTranscribeView
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
@@ -15,6 +16,9 @@ urlpatterns = [
     path('api/v1/auth/logout/', accounts.LogoutView.as_view()),
     path('api/v1/auth/me/', accounts.ProfileView.as_view()),
     path('api/v1/auth/password/', accounts.PasswordView.as_view()),
+    path('api/v1/tutor/chat/', TutorChatView.as_view()),
+    path('api/v1/tutor/speech/', TutorSpeechView.as_view()),
+    path('api/v1/tutor/transcribe/', TutorTranscribeView.as_view()),
     path('api/v1/tracks/', education.TrackList.as_view()),
     path('api/v1/tracks/<str:short_id>/', education.TrackDetail.as_view()),
     path('api/v1/courses/', education.CourseList.as_view()),
