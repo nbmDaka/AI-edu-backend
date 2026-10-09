@@ -29,6 +29,9 @@ def validate_test(data):
     for qi, q in enumerate(questions):
         if not isinstance(q, dict) or not str(q.get('text', '')).strip() or q.get('position') != qi:
             raise ValidationError({'questions': 'Проверьте текст и порядок вопросов'})
+        competency = q.get('competency', 'general')
+        if not isinstance(competency, str) or not competency.strip() or len(competency.strip()) > 100:
+            raise ValidationError({'competency': 'Укажите компетенцию длиной до 100 символов'})
         options = q.get('options', [])
         if not isinstance(options, list) or len(options) < 2 or len(options) > 20:
             raise ValidationError({'options': 'Требуется от 2 до 20 вариантов'})
@@ -72,7 +75,7 @@ def _save_test(test, data):
     test.save()
     test.questions.all().delete()
     for q in questions:
-        question = Question.objects.create(test=test, text=q['text'], position=q['position'], points=int(q.get('points', 1)))
+        question = Question.objects.create(test=test, text=q['text'], position=q['position'], points=int(q.get('points', 1)), competency=q.get('competency', 'general').strip())
         Option.objects.bulk_create([Option(question=question, text=o['text'], position=o['position'],
             is_correct=o['is_correct']) for o in q['options']])
     if hasattr(test, 'learning_item'):
@@ -85,13 +88,23 @@ def _save_test(test, data):
 
 @transaction.atomic
 def submit_attempt(test_id, user, answers):
+    from apps.accounts.models import User
+    User.objects.select_for_update().get(pk=user.pk)
     test = Test.objects.select_for_update(of=('self',)).get(pk=test_id)
     from apps.education.access import can_access_test
     if not test.is_published or not can_access_test(user, test):
         raise PermissionDenied()
+    learning_item = test.learning_item if hasattr(test, 'learning_item') else None
+    adaptive = bool(learning_item and learning_item.module.course.adaptive_learning_enabled)
+    practice = None
+    if adaptive:
+        from apps.education.adaptive import prepare_module_attempt
+        practice = prepare_module_attempt(user, learning_item)
     if test.max_attempts is not None and TestAttempt.objects.filter(test=test, user=user).count() >= test.max_attempts:
         raise ValidationError({'attempts': 'Лимит попыток исчерпан'})
     questions = list(test.questions.prefetch_related('options'))
+    if adaptive and not questions:
+        raise ValidationError({'detail': 'В итоговом тесте ещё нет вопросов.'})
     if not isinstance(answers, list) or len(answers) != len(questions):
         raise ValidationError({'answers': 'Ответьте на все вопросы'})
     selected = {}
@@ -105,19 +118,25 @@ def submit_attempt(test_id, user, answers):
         raise ValidationError({'answers': 'Ответы не соответствуют тесту'})
     earned = total = 0
     snapshot = []
+    question_results = []
     for q in questions:
         options = list(q.options.all())
         choice = next((o for o in options if o.id == selected[q.id]), None)
         if choice is None:
             raise ValidationError({'answers': 'Вариант не принадлежит вопросу'})
+        question_results.append((q, choice.is_correct))
         total += q.points
         earned += q.points if choice.is_correct else 0
-        snapshot.append({'question': q.text, 'selected': choice.text, 'correct': next(o.text for o in options if o.is_correct), 'points': q.points})
+        snapshot.append({'question': q.text, 'selected': choice.text, 'correct': next(o.text for o in options if o.is_correct), 'points': q.points, 'competency': q.competency})
     percent = round(100 * earned / total, 2) if total else 0
+    adaptive_result = None
+    if adaptive:
+        from apps.education.adaptive import evaluate_module_attempt
+        adaptive_result = evaluate_module_attempt(user, learning_item, question_results, practice)
     attempt = TestAttempt.objects.create(test=test, user=user, test_version=test.version,
         answers=answers, snapshot=snapshot, earned_points=earned, total_points=total,
-        percent=percent, passed=percent >= test.passing_percent)
-    if attempt.passed and hasattr(test, 'learning_item'):
+        percent=percent, passed=percent >= test.passing_percent, adaptive_result=adaptive_result)
+    if learning_item and (adaptive_result['module_completed'] if adaptive else attempt.passed):
         from apps.education.progress import complete_item_from_server
         complete_item_from_server(user, test.learning_item)
     return attempt

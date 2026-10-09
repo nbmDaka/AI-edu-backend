@@ -1,4 +1,5 @@
 from common.permissions import is_admin
+from .adaptive import module_is_locked
 
 def can_access_lesson(user, lesson):
     if is_admin(user):
@@ -7,7 +8,8 @@ def can_access_lesson(user, lesson):
     track = course.learning_track
     return bool(lesson.status == 'PUBLISHED' and lesson.module.is_published and course.is_published
                 and track and track.is_published and track.is_active
-                and user.is_authenticated and user.learning_track_id == track.pk)
+                and user.is_authenticated and user.learning_track_id == track.pk
+                and not module_is_locked(user, lesson.module))
 
 
 def can_access_item(user, item):
@@ -17,7 +19,8 @@ def can_access_item(user, item):
     track = course.learning_track
     return bool(item.status == 'PUBLISHED' and item.module.is_published and course.is_published
                 and track and track.is_published and track.is_active
-                and user.is_authenticated and user.learning_track_id == track.pk)
+                and user.is_authenticated and user.learning_track_id == track.pk
+                and not module_is_locked(user, item.module))
 
 
 def can_access_test(user, test):

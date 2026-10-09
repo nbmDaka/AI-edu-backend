@@ -6,8 +6,10 @@ from rest_framework import generics, serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import ValidationError, PermissionDenied, NotFound
 from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
 from common.permissions import is_admin, IsPlatformAdmin
-from .models import LearningTrack, Course, Module, Lesson, LearningItem
+from .models import LearningTrack, Course, Module, Lesson, LearningItem, PracticeSubmission
+from .access import can_access_item, can_access_lesson
 from .progress import course_progress, save_lecture_progress
 from .serializers import TrackSerializer, CourseSerializer, ModuleSerializer, LessonSerializer, LearningItemSerializer
 from .services import delete_content, delete_item, order_module_items, set_item_positions
@@ -130,6 +132,12 @@ class LessonList(AdminWriteMixin, generics.ListCreateAPIView):
 class LessonDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LessonSerializer
     lookup_field = 'short_id'
+
+    def get_object(self):
+        obj = super().get_object()
+        if not can_access_lesson(self.request.user, obj):
+            raise PermissionDenied('Сначала завершите предыдущий модуль')
+        return obj
     def get_queryset(self):
         q = Lesson.objects.select_related('module__course__learning_track').all()
         if is_admin(self.request.user):
@@ -161,6 +169,7 @@ class ItemProgressOutput(serializers.Serializer):
 class CourseProgressOutput(serializers.Serializer):
     percent = serializers.IntegerField(min_value=0, max_value=100)
     items = serializers.DictField(child=ItemProgressOutput())
+    modules = serializers.DictField(child=serializers.DictField())
 
 
 class CourseProgressView(generics.GenericAPIView):
@@ -182,6 +191,8 @@ class ItemProgressView(generics.GenericAPIView):
         item = item_queryset(request).filter(short_id=short_id).first()
         if not item:
             raise NotFound()
+        if not can_access_item(request.user, item):
+            raise PermissionDenied('Сначала завершите предыдущий модуль')
         if item.type != LearningItem.Type.LECTURE:
             raise ValidationError({'detail': 'Progress can only be submitted for a lecture'})
         serializer = self.get_serializer(data=request.data)
@@ -233,6 +244,12 @@ class LearningItemDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView)
     serializer_class = LearningItemSerializer
     lookup_field = 'short_id'
 
+    def get_object(self):
+        obj = super().get_object()
+        if not can_access_item(self.request.user, obj):
+            raise PermissionDenied('Сначала завершите предыдущий модуль')
+        return obj
+
     def get_queryset(self):
         return item_queryset(self.request)
 
@@ -280,3 +297,60 @@ class LearningItemDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView)
     @transaction.atomic
     def perform_destroy(self, instance):
         delete_item(instance)
+
+
+class PracticeSubmissionInput(serializers.Serializer):
+    checks = serializers.ListField(child=serializers.BooleanField(), max_length=30)
+
+    def validate_checks(self, value):
+        if any(type(check) is not bool for check in self.initial_data.get('checks', [])):
+            raise serializers.ValidationError('Ожидается список логических значений')
+        return value
+
+
+class PracticeSubmissionOutput(serializers.Serializer):
+    criteria = serializers.ListField(child=serializers.CharField())
+    checks = serializers.ListField(child=serializers.BooleanField(), allow_null=True)
+    progress_percent = serializers.IntegerField(required=False)
+
+
+class ItemPracticeView(generics.GenericAPIView):
+    serializer_class = PracticeSubmissionInput
+
+    def get_item(self, request, short_id):
+        item = item_queryset(request).filter(short_id=short_id, type='PRACTICE').first()
+        if not item:
+            raise NotFound()
+        if not can_access_item(request.user, item):
+            raise PermissionDenied('Сначала завершите предыдущий модуль')
+        return item
+
+    @extend_schema(responses=PracticeSubmissionOutput)
+    def get(self, request, short_id):
+        item = self.get_item(request, short_id)
+        submission = PracticeSubmission.objects.filter(user=request.user, item=item).first()
+        checks = submission.checks if submission and submission.criteria == item.practice_criteria else None
+        return Response({'criteria': item.practice_criteria, 'checks': checks})
+
+    @extend_schema(responses=PracticeSubmissionOutput)
+    @transaction.atomic
+    def post(self, request, short_id):
+        from apps.accounts.models import User
+        User.objects.select_for_update().get(pk=request.user.pk)
+        item = self.get_item(request, short_id)
+        if not item.practice_criteria:
+            raise ValidationError({'detail': 'Администратор ещё не настроил критерии практической работы.'})
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        checks = serializer.validated_data['checks']
+        if len(checks) != len(item.practice_criteria):
+            raise ValidationError({'checks': 'Заполните все критерии практической работы'})
+        PracticeSubmission.objects.update_or_create(user=request.user, item=item,
+            defaults={'criteria': item.practice_criteria, 'checks': checks})
+        from .models import UserLearningItemProgress
+        from django.utils import timezone
+        percent = round(sum(checks) / len(checks) * 100)
+        UserLearningItemProgress.objects.update_or_create(user=request.user, learning_item=item,
+            defaults={'progress_percent': percent, 'is_completed': all(checks),
+                      'completed_at': timezone.now() if all(checks) else None})
+        return Response({'criteria': item.practice_criteria, 'checks': checks, 'progress_percent': percent})

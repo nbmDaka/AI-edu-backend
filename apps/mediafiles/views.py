@@ -51,8 +51,9 @@ class MediaView(GenericAPIView):
         from apps.lessons.models import LessonBlock
         from apps.education.models import LearningTrack, Course
         user_track_id = getattr(request.user, 'learning_track_id', None)
+        from apps.education.access import can_access_lesson
         public_block = (
-            LessonBlock.objects.filter(
+            any(can_access_lesson(request.user, block.lesson) for block in LessonBlock.objects.select_related('lesson__module__course__learning_track').filter(
                 media=media,
                 lesson__status='PUBLISHED',
                 lesson__module__is_published=True,
@@ -60,7 +61,7 @@ class MediaView(GenericAPIView):
                 lesson__module__course__learning_track_id=user_track_id,
                 lesson__module__course__learning_track__is_published=True,
                 lesson__module__course__learning_track__is_active=True,
-            ).exists()
+            ))
             if user_track_id
             else False
         )

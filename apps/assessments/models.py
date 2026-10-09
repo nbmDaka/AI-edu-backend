@@ -15,6 +15,7 @@ class Question(models.Model):
     text = models.TextField()
     position = models.PositiveIntegerField()
     points = models.PositiveIntegerField(default=1)
+    competency = models.CharField(max_length=100, default='general')
     class Meta:
         ordering = ['position', 'id']
 
@@ -36,6 +37,7 @@ class TestAttempt(models.Model):
     total_points = models.PositiveIntegerField()
     percent = models.FloatField()
     passed = models.BooleanField()
+    adaptive_result = models.JSONField(null=True, blank=True)
     completed_at = models.DateTimeField(auto_now_add=True)
     class Meta:
         ordering = ['-completed_at', '-id']

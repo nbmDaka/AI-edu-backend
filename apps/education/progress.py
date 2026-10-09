@@ -38,16 +38,18 @@ def save_lecture_progress(user, item, percent):
 
 
 def course_progress(user, course):
+    from .adaptive import module_states
+    modules = module_states(user, course)
     items = LearningItem.objects.filter(
         module__course=course, status=LearningItem.Status.PUBLISHED,
         module__is_published=True, module__course__is_published=True)
     total = items.count()
     if not total:
-        return {'percent': 0, 'items': {}}
+        return {'percent': 0, 'items': {}, 'modules': modules}
     rows = UserLearningItemProgress.objects.filter(user=user, learning_item__in=items).values(
         'learning_item__short_id', 'progress_percent', 'is_completed')
     item_progress = {row['learning_item__short_id']: {
         'progress_percent': row['progress_percent'], 'is_completed': row['is_completed']}
         for row in rows}
     return {'percent': round(sum(row['progress_percent'] for row in item_progress.values()) / total),
-            'items': item_progress}
+            'items': item_progress, 'modules': modules}

@@ -10,7 +10,7 @@ class QuestionAdminSerializer(serializers.ModelSerializer):
     options = OptionAdminSerializer(many=True)
     class Meta:
         model = Question
-        fields = ['id', 'text', 'position', 'points', 'options']
+        fields = ['id', 'text', 'position', 'points', 'competency', 'options']
 
 class TestAdminSerializer(serializers.ModelSerializer):
     questions = QuestionAdminSerializer(many=True)
@@ -38,4 +38,4 @@ class TestStudentSerializer(serializers.ModelSerializer):
 class AttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestAttempt
-        fields = ['id', 'test', 'test_version', 'answers', 'snapshot', 'earned_points', 'total_points', 'percent', 'passed', 'completed_at']
+        fields = ['id', 'test', 'test_version', 'answers', 'snapshot', 'earned_points', 'total_points', 'percent', 'passed', 'adaptive_result', 'completed_at']
