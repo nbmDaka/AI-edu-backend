@@ -87,3 +87,65 @@ class LearningItemFlowTests(TestCase):
         self.assertEqual(items[2].practice_id, practice.pk)
         self.assertEqual(LessonBlock.objects.get(pk=block.pk).content, 'Original')
         self.assertEqual(TestAttempt.objects.get(pk=attempt.pk).snapshot[0]['correct'], 'Answer')
+
+    def create_item(self, kind, module=None):
+        response = self.admin_client.post('/api/v1/items/', {
+            'module': (module or self.module).pk, 'type': kind, 'title': kind,
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        return response.data
+
+    def test_only_one_test_per_module_without_orphan_content(self):
+        test = self.create_item('TEST')
+        count = Test.objects.count()
+        response = self.admin_client.post('/api/v1/items/', {
+            'module': self.module.pk, 'type': 'TEST', 'title': 'Second test',
+        }, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(Test.objects.count(), count)
+        self.assertEqual(LearningItem.objects.filter(module=self.module, type='TEST').count(), 1)
+        other = Module.objects.create(course=self.course, title='Other module')
+        self.create_item('TEST', module=other)
+        self.assertEqual(self.admin_client.delete(f"/api/v1/items/{test['short_id']}/").status_code, 204)
+        self.create_item('TEST')
+
+    def test_new_content_is_inserted_before_test(self):
+        test = self.create_item('TEST')
+        lecture = self.create_item('LECTURE')
+        practice = self.create_item('PRACTICE')
+        self.assertEqual(lecture['position'], 0)
+        self.assertEqual(practice['position'], 1)
+        items = list(LearningItem.objects.filter(module=self.module))
+        self.assertEqual([item.type for item in items], ['LECTURE', 'PRACTICE', 'TEST'])
+        self.assertEqual([item.position for item in items], [0, 1, 2])
+        self.assertEqual(items[-1].short_id, test['short_id'])
+        self.assertEqual(Lesson.objects.get(pk=lecture['lesson']).position, 0)
+
+    def test_reordering_cannot_move_test_or_content_past_test(self):
+        lecture = self.create_item('LECTURE')
+        practice = self.create_item('PRACTICE')
+        test = self.create_item('TEST')
+        for item, position in [(test, 0), (test, 1), (lecture, 2), (practice, 2)]:
+            response = self.admin_client.patch(f"/api/v1/items/{item['short_id']}/", {'position': position}, format='json')
+            self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(list(LearningItem.objects.filter(module=self.module).values_list('type', flat=True)),
+                         ['LECTURE', 'PRACTICE', 'TEST'])
+        moved = self.admin_client.patch(f"/api/v1/items/{practice['short_id']}/", {'position': 0}, format='json')
+        self.assertEqual(moved.status_code, 200, moved.data)
+        self.assertEqual(list(LearningItem.objects.filter(module=self.module).values_list('type', flat=True)),
+                         ['PRACTICE', 'LECTURE', 'TEST'])
+        self.assertEqual(Lesson.objects.get(pk=lecture['lesson']).position, 1)
+        response = self.admin_client.patch(f"/api/v1/items/{test['short_id']}/", {'title': 'Renamed'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['position'], 2)
+        self.assertEqual(self.admin_client.delete(f"/api/v1/items/{practice['short_id']}/").status_code, 204)
+        self.assertEqual(list(LearningItem.objects.filter(module=self.module).values_list('type', 'position')),
+                         [('LECTURE', 0), ('TEST', 1)])
+
+    def test_reordering_without_test_still_works(self):
+        lecture = self.create_item('LECTURE')
+        self.create_item('PRACTICE')
+        response = self.admin_client.patch(f"/api/v1/items/{lecture['short_id']}/", {'position': 1}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(list(LearningItem.objects.filter(module=self.module).values_list('type', flat=True)),
+                         ['PRACTICE', 'LECTURE'])

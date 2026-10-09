@@ -10,7 +10,7 @@ from common.permissions import is_admin, IsPlatformAdmin
 from .models import LearningTrack, Course, Module, Lesson, LearningItem
 from .progress import course_progress, save_lecture_progress
 from .serializers import TrackSerializer, CourseSerializer, ModuleSerializer, LessonSerializer, LearningItemSerializer
-from .services import delete_content, delete_item
+from .services import delete_content, delete_item, order_module_items, set_item_positions
 
 def integer_query(request, name):
     value = request.query_params.get(name)
@@ -210,6 +210,8 @@ class LearningItemList(AdminWriteMixin, generics.ListCreateAPIView):
         last_position = LearningItem.objects.filter(module=module).aggregate(Max('position'))['position__max']
         position = 0 if last_position is None else last_position + 1
         kind = serializer.validated_data['type']
+        if kind == LearningItem.Type.TEST and LearningItem.objects.filter(module=module, type=kind).exists():
+            raise ValidationError({'type': 'В модуле может быть только один тест'})
         title = serializer.validated_data['title']
         description = serializer.validated_data.get('description', '')
         if kind == LearningItem.Type.LECTURE:
@@ -223,6 +225,8 @@ class LearningItemList(AdminWriteMixin, generics.ListCreateAPIView):
             from apps.activities.models import PracticeDefinition
             content = PracticeDefinition.objects.create(kind='PLACEHOLDER', config={})
             serializer.save(position=position, practice=content)
+        order_module_items(module.pk)
+        serializer.instance.refresh_from_db()
 
 
 class LearningItemDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -253,15 +257,15 @@ class LearningItemDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView)
             siblings = list(LearningItem.objects.filter(module=item.module).order_by('position', 'id'))
             if target < 0 or target >= len(siblings):
                 raise ValidationError({'position': 'Позиция вне модуля'})
+            if item.type == LearningItem.Type.TEST and target != len(siblings) - 1:
+                raise ValidationError({'position': 'Тест всегда должен быть последним элементом модуля'})
+            content_count = sum(member.type != LearningItem.Type.TEST for member in siblings)
+            if item.type != LearningItem.Type.TEST and target >= content_count:
+                raise ValidationError({'position': 'Лекции и практические работы должны находиться перед тестом'})
+            siblings.sort(key=lambda member: member.type == LearningItem.Type.TEST)
             siblings.remove(item)
             siblings.insert(target, item)
-            offset = len(siblings) + max(member.position for member in siblings) + 1
-            for index, member in enumerate(siblings):
-                LearningItem.objects.filter(pk=member.pk).update(position=offset + index)
-            for index, member in enumerate(siblings):
-                LearningItem.objects.filter(pk=member.pk).update(position=index)
-                if member.lesson_id:
-                    Lesson.objects.filter(pk=member.lesson_id).update(position=index)
+            set_item_positions(siblings)
             item.position = target
         updated = serializer.save(position=item.position)
         if updated.type == 'LECTURE':

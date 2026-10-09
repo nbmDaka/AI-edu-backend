@@ -44,12 +44,12 @@ class LearningItemMigrationTests(TransactionTestCase):
             from apps.assessments.models import TestAttempt
             from apps.activities.models import PracticeDefinition
             items = list(LearningItem.objects.filter(module_id=module.pk))
-            self.assertEqual([item.type for item in items], ['LECTURE', 'TEST', 'PRACTICE', 'LECTURE'])
+            self.assertEqual([item.type for item in items], ['LECTURE', 'PRACTICE', 'LECTURE', 'TEST'])
             self.assertEqual([item.position for item in items], [0, 1, 2, 3])
             self.assertEqual(items[0].short_id, first.short_id)
-            self.assertEqual(items[3].short_id, second.short_id)
-            self.assertEqual(items[1].test_id, test.pk)
-            self.assertEqual(items[2].practice_id, practice.pk)
+            self.assertEqual(items[2].short_id, second.short_id)
+            self.assertEqual(items[3].test_id, test.pk)
+            self.assertEqual(items[1].practice_id, practice.pk)
             self.assertEqual(LessonBlock.objects.get(pk=block.pk).media_id, media.pk)
             self.assertEqual(TestAttempt.objects.get(pk=attempt.pk).snapshot[0]['correct'], 'A')
             self.assertEqual(PracticeDefinition.objects.get(pk=practice.pk).config['prompt'], 'Write')
