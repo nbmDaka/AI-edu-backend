@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from common.permissions import is_admin, IsPlatformAdmin
 from .models import LearningTrack, Course, Module, Lesson, LearningItem, PracticeSubmission
-from .access import can_access_item, can_access_lesson
+from .access import accessible_courses, can_access_item, can_access_lesson
 from .progress import course_progress, save_lecture_progress
 from .serializers import TrackSerializer, CourseSerializer, ModuleSerializer, LessonSerializer, LearningItemSerializer
 from .services import delete_content, delete_item, order_module_items, set_item_positions
@@ -70,8 +70,7 @@ class CourseList(AdminWriteMixin, generics.ListCreateAPIView):
             if track_id:
                 q = q.filter(learning_track_id=track_id)
             return q
-        return q.filter(is_published=True, learning_track_id=self.request.user.learning_track_id,
-                        learning_track__is_published=True, learning_track__is_active=True)
+        return accessible_courses(self.request.user)
 
 class CourseDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CourseSerializer
@@ -80,8 +79,7 @@ class CourseDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
         q = Course.objects.select_related('learning_track').all()
         if is_admin(self.request.user):
             return q
-        return q.filter(is_published=True, learning_track_id=self.request.user.learning_track_id,
-                        learning_track__is_published=True, learning_track__is_active=True)
+        return accessible_courses(self.request.user)
 
     def get_object(self):
         queryset = self.filter_queryset(self.get_queryset())
@@ -101,9 +99,7 @@ class ModuleList(AdminWriteMixin, generics.ListCreateAPIView):
             q = q.filter(course_id=course_id)
         if is_admin(self.request.user):
             return q
-        return q.filter(is_published=True, course__is_published=True,
-                        course__learning_track_id=self.request.user.learning_track_id,
-                        course__learning_track__is_published=True, course__learning_track__is_active=True)
+        return q.filter(is_published=True, course__in=accessible_courses(self.request.user))
 
 class ModuleDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ModuleSerializer
@@ -112,9 +108,7 @@ class ModuleDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
         q = Module.objects.select_related('course__learning_track').all()
         if is_admin(self.request.user):
             return q
-        return q.filter(is_published=True, course__is_published=True,
-                        course__learning_track_id=self.request.user.learning_track_id,
-                        course__learning_track__is_published=True, course__learning_track__is_active=True)
+        return q.filter(is_published=True, course__in=accessible_courses(self.request.user))
 
 class LessonList(AdminWriteMixin, generics.ListCreateAPIView):
     serializer_class = LessonSerializer
@@ -125,9 +119,7 @@ class LessonList(AdminWriteMixin, generics.ListCreateAPIView):
             q = q.filter(module_id=module_id)
         if is_admin(self.request.user):
             return q
-        return q.filter(status='PUBLISHED', module__is_published=True, module__course__is_published=True,
-                        module__course__learning_track_id=self.request.user.learning_track_id,
-                        module__course__learning_track__is_published=True, module__course__learning_track__is_active=True)
+        return q.filter(status='PUBLISHED', module__is_published=True, module__course__in=accessible_courses(self.request.user))
 
 class LessonDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LessonSerializer
@@ -142,19 +134,14 @@ class LessonDetail(AdminWriteMixin, generics.RetrieveUpdateDestroyAPIView):
         q = Lesson.objects.select_related('module__course__learning_track').all()
         if is_admin(self.request.user):
             return q
-        return q.filter(status='PUBLISHED', module__is_published=True, module__course__is_published=True,
-                        module__course__learning_track_id=self.request.user.learning_track_id,
-                        module__course__learning_track__is_published=True, module__course__learning_track__is_active=True)
+        return q.filter(status='PUBLISHED', module__is_published=True, module__course__in=accessible_courses(self.request.user))
 
 
 def item_queryset(request):
     q = LearningItem.objects.select_related('module__course__learning_track', 'lesson', 'test', 'practice')
     if is_admin(request.user):
         return q
-    return q.filter(status='PUBLISHED', module__is_published=True, module__course__is_published=True,
-                    module__course__learning_track_id=request.user.learning_track_id,
-                    module__course__learning_track__is_published=True,
-                    module__course__learning_track__is_active=True)
+    return q.filter(status='PUBLISHED', module__is_published=True, module__course__in=accessible_courses(request.user))
 
 
 class LectureProgressInput(serializers.Serializer):
@@ -175,9 +162,7 @@ class CourseProgressOutput(serializers.Serializer):
 class CourseProgressView(generics.GenericAPIView):
     serializer_class = CourseProgressOutput
     def get(self, request, slug):
-        courses = Course.objects.all() if is_admin(request.user) else Course.objects.filter(
-            is_published=True, learning_track_id=request.user.learning_track_id,
-            learning_track__is_published=True, learning_track__is_active=True)
+        courses = accessible_courses(request.user)
         course = courses.filter(Q(short_id=slug) | Q(slug=slug)).first()
         if not course:
             raise NotFound()

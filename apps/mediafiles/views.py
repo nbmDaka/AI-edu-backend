@@ -51,7 +51,7 @@ class MediaView(GenericAPIView):
         from apps.lessons.models import LessonBlock
         from apps.education.models import LearningTrack, Course
         user_track_id = getattr(request.user, 'learning_track_id', None)
-        from apps.education.access import can_access_lesson
+        from apps.education.access import can_access_lesson, accessible_courses
         public_block = (
             any(can_access_lesson(request.user, block.lesson) for block in LessonBlock.objects.select_related('lesson__module__course__learning_track').filter(
                 media=media,
@@ -67,7 +67,7 @@ class MediaView(GenericAPIView):
         )
         public_cover = (
             LearningTrack.objects.filter(cover=media, is_published=True, is_active=True).exists()
-            or Course.objects.filter(cover=media, is_published=True, learning_track__is_published=True, learning_track__is_active=True).exists()
+            or accessible_courses(request.user).filter(cover=media).exists()
         )
         if not (is_admin(request.user) or public_block or public_cover):
             raise PermissionDenied()

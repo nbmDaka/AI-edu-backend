@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.accounts import views as accounts
+from apps.accounts import admin_views as admin_accounts
 from apps.education import views as education
 from apps.lessons import views as lessons
 from apps.assessments import views as assessments
@@ -15,6 +16,9 @@ urlpatterns = [
     path('api/v1/auth/logout/', accounts.LogoutView.as_view()),
     path('api/v1/auth/me/', accounts.ProfileView.as_view()),
     path('api/v1/auth/password/', accounts.PasswordView.as_view()),
+    path('api/v1/admin/users/', admin_accounts.AdminUserList.as_view()),
+    path('api/v1/admin/users/<int:pk>/', admin_accounts.AdminUserDetail.as_view()),
+    path('api/v1/admin/users/<int:pk>/learning-progress/', admin_accounts.AdminUserLearningProgress.as_view()),
     path('api/v1/tracks/', education.TrackList.as_view()),
     path('api/v1/tracks/<str:short_id>/', education.TrackDetail.as_view()),
     path('api/v1/courses/', education.CourseList.as_view()),
