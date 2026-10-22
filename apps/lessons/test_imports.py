@@ -11,7 +11,7 @@ from django.test import TransactionTestCase, SimpleTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from apps.accounts.models import User
-from apps.education.models import Course, Lesson, Module
+from apps.education.models import Course, Lesson, Module, LearningItem, LearningTrack
 from apps.lessons.models import LectureImportJob
 from apps.lessons.importing.document import to_blocks, ImportFailure
 from apps.lessons.importing.worker import claim, execute, store_result
@@ -41,6 +41,88 @@ def office_file(kind='docx'):
         slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1)).text = 'Above'
     document.save(data)
     return SimpleUploadedFile(f'lecture.{kind}', data.getvalue())
+
+
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+class PracticeInstructionImportTests(TransactionTestCase):
+    def setUp(self):
+        folder = TemporaryDirectory(); self.addCleanup(folder.cleanup)
+        override = override_settings(MEDIA_ROOT=folder.name, LECTURE_IMPORT_TIMEOUT=90)
+        override.enable(); self.addCleanup(override.disable)
+        track = LearningTrack.objects.create(title='Import track', is_published=True)
+        course = Course.objects.create(title='Import course', learning_track=track, is_published=True)
+        self.module = Module.objects.create(course=course, title='Module', is_published=True)
+        self.item = LearningItem.objects.create(module=self.module, title='Original task', type='PRACTICE')
+        self.admin = User.objects.create_user(email='practice-import-admin@example.test', password='Password1234!', role='ADMIN')
+        user = User.objects.create_user(email='practice-import-student@example.test', password='Password1234!', learning_track=track)
+        self.client = APIClient(); self.client.force_authenticate(self.admin)
+        self.student = APIClient(); self.student.force_authenticate(user)
+        self.url = f'/api/v1/items/{self.item.short_id}/practice/imports/'
+        self.draft_url = f'/api/v1/items/{self.item.short_id}/practice/draft/'
+
+    def enqueue(self):
+        response = self.client.post(self.url, {'file': office_file()}, format='multipart')
+        self.assertEqual(response.status_code, 202, response.data)
+        self.assertTrue(response.data['source_url'].startswith(self.url))
+        return LectureImportJob.objects.get(pk=response.data['id'])
+
+    def save_instructions(self, instructions):
+        payload = {'practice_type': 'lecture_workshop', 'title': self.item.title, 'description': '',
+                   'config': {'instructions': instructions, 'criteria': [{'title': 'Keep this criterion', 'description': '', 'is_required': True}]}}
+        response = self.client.put(self.draft_url, payload, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        return payload
+
+    def test_real_import_requires_review_and_preserves_structure_when_published(self):
+        job = self.enqueue()
+        self.assertIsNone(job.lesson_id)
+        self.assertEqual(job.practice_item_id, self.item.pk)
+        execute(claim()); job.refresh_from_db()
+        self.assertEqual(job.status, 'SUCCEEDED', job.error_code)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.practice_id)
+        instructions = [block['content'] for block in job.result['blocks']]
+        payload = self.save_instructions(instructions)
+        self.assertEqual(self.client.post(self.draft_url).status_code, 200)
+        state = self.student.get(f'/api/v1/items/{self.item.short_id}/practice/').data
+        self.assertEqual(state['version']['config'], payload['config'])
+        self.assertIn('table', instructions[0])
+
+    def test_history_sources_and_jobs_are_private_and_scoped_to_live_practices(self):
+        job = self.enqueue()
+        self.assertEqual(self.client.post(self.url, {'file': office_file()}, format='multipart').status_code, 409)
+        self.assertEqual(self.student.get(self.url).status_code, 403)
+        self.assertEqual(self.student.post(self.url, {'file': office_file()}, format='multipart').status_code, 403)
+        self.assertEqual(self.student.get(self.url + f'{job.pk}/').status_code, 403)
+        self.assertEqual(self.student.get(self.url + f'{job.pk}/source/').status_code, 403)
+        source = self.client.get(self.url + f'{job.pk}/source/')
+        self.assertEqual(source.status_code, 200); source.close()
+        other = LearningItem.objects.create(module=self.module, title='Other', type='PRACTICE', position=1)
+        self.assertEqual(self.client.get(f'/api/v1/items/{other.short_id}/practice/imports/{job.pk}/').status_code, 404)
+        other.type = 'LECTURE'; other.save()
+        self.assertEqual(self.client.get(f'/api/v1/items/{other.short_id}/practice/imports/').status_code, 404)
+        self.item.delete()
+        self.assertEqual(self.client.get(self.url + f'{job.pk}/').status_code, 404)
+
+    def test_imported_images_become_accessible_only_after_publication(self):
+        from PIL import Image
+        self.enqueue(); job = claim()
+        with TemporaryDirectory() as folder:
+            Image.new('RGB', (8, 8), 'white').save(Path(folder) / 'figure.png')
+            store_result(job, {'assets': [{'key': 'figure', 'file': 'figure.png', 'is_page': False}],
+                              'elements': [{'source_id': 'e1', 'kind': 'image', 'image': 'figure', 'text': 'Task diagram'}], 'warnings': []}, folder)
+        job.refresh_from_db(); media_id = job.result['blocks'][0]['media']
+        media_url = f'/api/v1/media/{media_id}/'
+        self.assertEqual(self.student.get(media_url).status_code, 403)
+        instruction = json.dumps({'type': 'doc', 'content': [{'type': 'practiceImage', 'attrs': {'media': media_id, 'caption': 'Task diagram'}}]})
+        self.save_instructions([instruction])
+        self.assertEqual(self.student.get(media_url).status_code, 403)
+        self.assertEqual(self.client.post(self.draft_url).status_code, 200)
+        response = self.student.get(media_url)
+        self.assertEqual(response.status_code, 200); response.close()
+        call_command('cleanup_unused_media', delete=True, stdout=io.StringIO())
+        response = self.student.get(media_url)
+        self.assertEqual(response.status_code, 200); response.close()
 
 
 class LectureImportTests(TransactionTestCase):

@@ -1,9 +1,25 @@
+import json
 from apps.education.models import Lesson
 
 
 def source_media_ids(config):
-    return {file['media'] for file in config.get('source_files', [])
-            if isinstance(file, dict) and type(file.get('media')) is int}
+    ids = {file['media'] for file in config.get('source_files', [])
+           if isinstance(file, dict) and type(file.get('media')) is int}
+    for instruction in config.get('instructions', []):
+        try:
+            pending = [json.loads(instruction)]
+        except (TypeError, ValueError, RecursionError):
+            continue
+        while pending:
+            node = pending.pop()
+            if not isinstance(node, dict):
+                continue
+            attrs = node.get('attrs', {})
+            if node.get('type') == 'practiceImage' and isinstance(attrs, dict) and type(attrs.get('media')) is int:
+                ids.add(attrs['media'])
+            if isinstance(node.get('content'), list):
+                pending.extend(node['content'])
+    return ids
 
 
 def practice_source_media_ids():

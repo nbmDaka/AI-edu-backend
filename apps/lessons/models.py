@@ -39,7 +39,8 @@ class LectureImportJob(models.Model):
         SUCCEEDED = 'SUCCEEDED'
         FAILED = 'FAILED'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    lesson = models.ForeignKey('education.Lesson', on_delete=models.CASCADE, related_name='imports')
+    lesson = models.ForeignKey('education.Lesson', null=True, blank=True, on_delete=models.CASCADE, related_name='imports')
+    practice_item = models.ForeignKey('education.LearningItem', null=True, blank=True, on_delete=models.CASCADE, related_name='instruction_imports')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     source = models.FileField(upload_to=import_upload_path)
     original_name = models.CharField(max_length=255)
@@ -59,7 +60,12 @@ class LectureImportJob(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [models.Index(fields=['status', 'created_at'], name='lecture_import_queue')]
-        constraints = [models.UniqueConstraint(fields=['lesson'], condition=models.Q(status__in=['PENDING', 'RUNNING']), name='one_active_lecture_import')]
+        constraints = [
+            models.UniqueConstraint(fields=['lesson'], condition=models.Q(status__in=['PENDING', 'RUNNING']), name='one_active_lecture_import'),
+            models.UniqueConstraint(fields=['practice_item'], condition=models.Q(status__in=['PENDING', 'RUNNING']), name='one_active_instruction_import'),
+            models.CheckConstraint(condition=(models.Q(lesson__isnull=False, practice_item__isnull=True)
+                                              | models.Q(lesson__isnull=True, practice_item__isnull=False)), name='import_has_one_target'),
+        ]
 
 
 class LectureImportAsset(models.Model):

@@ -64,11 +64,20 @@ def make_assignment_plugin(checklist_class):
                 if (not isinstance(node, dict) or depth > 16 or budget[0] > 10000
                         or node.get('type') not in {'doc', 'paragraph', 'heading', 'text', 'hardBreak',
                             'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock',
-                            'table', 'tableRow', 'tableCell', 'tableHeader', 'horizontalRule'}):
+                            'table', 'tableRow', 'tableCell', 'tableHeader', 'horizontalRule',
+                            'practiceImage', 'inlineMath', 'blockMath'}):
                     raise ValueError()
                 if 'text' in node and not isinstance(node['text'], str):
                     raise ValueError()
                 if not isinstance(node.get('attrs', {}), dict):
+                    raise ValueError()
+                if node['type'] == 'practiceImage':
+                    media_id = node.get('attrs', {}).get('media')
+                    if type(media_id) is not int or not MediaFile.objects.filter(pk=media_id, content_type__startswith='image/').exists():
+                        raise ValueError()
+                    if not isinstance(node['attrs'].get('caption', ''), str):
+                        raise ValueError()
+                if node['type'] in {'inlineMath', 'blockMath'} and not isinstance(node.get('attrs', {}).get('latex'), str):
                     raise ValueError()
                 marks = node.get('marks', [])
                 if not isinstance(marks, list) or len(marks) > 10:
