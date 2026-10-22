@@ -21,6 +21,13 @@ def safe_diagnostics(values, api_key=''):
     status = values.get('http_status')
     if type(status) is int and 100 <= status <= 599:
         result['http_status'] = status
+    reason = values.get('finish_reason')
+    if isinstance(reason, str) and reason in ('length', 'content_filter', 'tool_calls', 'function_call'):
+        result['finish_reason'] = reason
+    for name in ('max_completion_tokens', 'completion_tokens', 'reasoning_tokens'):
+        value = values.get(name)
+        if type(value) is int and 0 <= value <= 2_147_483_647:
+            result[name] = value
     for name in ('provider_code', 'provider_type', 'provider_param', 'request_id'):
         value = values.get(name)
         if (isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_.\[\]-]{1,128}', value)
@@ -91,7 +98,16 @@ def call_api(base_url, api_key, model, messages, timeout, max_completion_tokens=
         envelope = json.loads(raw)
         choice = envelope['choices'][0]
         if choice.get('finish_reason') not in (None, 'stop'):
-            raise AIError('ai_incomplete_response')
+            usage = envelope.get('usage')
+            usage = usage if isinstance(usage, dict) else {}
+            details = usage.get('completion_tokens_details')
+            details = details if isinstance(details, dict) else {}
+            raise AIError('ai_incomplete_response', {
+                'finish_reason': choice.get('finish_reason'),
+                'max_completion_tokens': max_completion_tokens,
+                'completion_tokens': usage.get('completion_tokens'),
+                'reasoning_tokens': details.get('reasoning_tokens'),
+            })
         content = choice['message']['content']
         if not isinstance(content, str):
             raise AIError('ai_invalid_response')

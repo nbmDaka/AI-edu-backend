@@ -535,6 +535,50 @@ class WorkspaceAIClientTests(SimpleTestCase):
                 with self.assertRaises(AIError):
                     call_api('https://provider.test/v1', 'secret', 'model', [], 10)
 
+    def test_incomplete_response_reports_reason_and_token_budget(self):
+        for reason in ('length', 'content_filter'):
+            with self.subTest(reason=reason):
+                envelope = {'choices': [{'finish_reason': reason, 'message': {'content': 'private lecture'}}],
+                            'usage': {'completion_tokens': 2048,
+                                      'completion_tokens_details': {'reasoning_tokens': 2000}}}
+                with patch('apps.activities.workspace.ai.build_opener') as opener:
+                    opener.return_value.open.return_value = self.transport_response(envelope)
+                    with self.assertRaises(AIError) as caught:
+                        call_api('https://provider.test/v1', 'secret-key', 'model', [], 10, 2048)
+                self.assertEqual(caught.exception.code, 'ai_incomplete_response')
+                self.assertEqual(caught.exception.diagnostics, {'finish_reason': reason,
+                    'max_completion_tokens': 2048, 'completion_tokens': 2048, 'reasoning_tokens': 2000})
+
+    def test_incomplete_response_handles_missing_or_malformed_usage(self):
+        for usage in (None, [], {'completion_tokens': True, 'completion_tokens_details': []},
+                      {'completion_tokens': -1, 'completion_tokens_details': {'reasoning_tokens': 'secret-key'}}):
+            with self.subTest(usage=usage):
+                envelope = {'choices': [{'finish_reason': 'length'}], 'usage': usage}
+                with patch('apps.activities.workspace.ai.build_opener') as opener:
+                    opener.return_value.open.return_value = self.transport_response(envelope)
+                    with self.assertRaises(AIError) as caught:
+                        call_api('https://provider.test/v1', 'secret-key', 'model', [], 10)
+                self.assertEqual(caught.exception.code, 'ai_incomplete_response')
+                self.assertEqual(caught.exception.diagnostics,
+                                 {'finish_reason': 'length', 'max_completion_tokens': 16000})
+
+    @override_settings(AI_BASE_URL='https://provider.test/v1', AI_API_KEY='secret-key')
+    def test_incomplete_diagnostics_survive_child_process_boundary(self):
+        operation = Mock(model='model', timeout_seconds=2, input_data={'messages': []})
+        for reason in ('length', 'secret-key', 'length\nFORGED LOG'):
+            with self.subTest(reason=reason):
+                diagnostics = {'finish_reason': reason, 'max_completion_tokens': 2048,
+                               'completion_tokens': 2048, 'reasoning_tokens': True, 'content': 'private lecture'}
+                output = {'error_code': 'ai_incomplete_response', 'diagnostics': diagnostics}
+                with patch('apps.activities.workspace.ai.subprocess.run',
+                           return_value=Mock(returncode=0, stdout=json.dumps(output))):
+                    with self.assertRaises(AIError) as caught:
+                        run_ai(operation)
+                expected = {'max_completion_tokens': 2048, 'completion_tokens': 2048}
+                if reason == 'length':
+                    expected['finish_reason'] = reason
+                self.assertEqual(caught.exception.diagnostics, expected)
+
     def test_http_errors_do_not_expose_provider_body_or_secret(self):
         with patch('apps.activities.workspace.ai.build_opener') as opener:
             opener.return_value.open.side_effect = HTTPError('secret-url', 429, 'secret-provider-body', {}, None)
