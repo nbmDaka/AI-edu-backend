@@ -182,13 +182,16 @@ jobs:
             cat <<'REMOTE'
           set -euo pipefail
           echo "$GHCR_PULL_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull backend minio-init import-worker
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull backend minio-init workspace-worker import-worker
           docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backend python manage.py migrate --noinput </dev/null
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --no-build backend import-worker
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --no-build --wait --wait-timeout 120 backend workspace-worker import-worker
           backend_container_id="$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q backend)"
           test -n "$backend_container_id"
           test "$(docker inspect --format '{{.State.Status}}' "$backend_container_id")" = running
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps backend
+          workspace_worker_container_id="$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q workspace-worker)"
+          test -n "$workspace_worker_container_id"
+          test "$(docker inspect --format '{{.State.Status}}' "$workspace_worker_container_id")" = running
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps backend workspace-worker
           docker logout ghcr.io
           REMOTE
           } | ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'

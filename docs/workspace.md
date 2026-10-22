@@ -50,14 +50,17 @@ python manage.py run_workspace_worker
 
 Для непрерывного worker необходим PostgreSQL (`DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`,
 `DATABASE_USER`, `DATABASE_PASSWORD`). Backend и worker должны использовать одну локальную БД и AI-конфигурацию.
-В уже настроенном локальном Docker backend команду можно выполнить через
-`docker compose exec backend python manage.py run_workspace_worker`. После изменения `.env` контейнер
-должен быть пересоздан в локальном окружении, чтобы получить новые переменные.
+В Docker Compose отдельный сервис `workspace-worker` запускает обработку очереди автоматически.
+Он использует тот же `.env` и PostgreSQL, что и backend. Для запуска в настроенном локальном
+окружении используйте `docker compose up -d --build workspace-worker`.
+После изменения `.env` пересоздайте backend и workspace-worker, чтобы оба получили новые переменные.
 
 `--poll-interval 2` задаёт частоту опроса очереди; `--once` восстанавливает истёкшие аренды,
 обрабатывает не более одной операции и завершает процесс. `--once` также доступен для локальных
 проверок на SQLite; конкурентная обработка поддерживается только на PostgreSQL.
-Worker ничего не мигрирует. Production Compose, Dockerfile и CI/CD для этой функции не изменены.
+Worker ничего не мигрирует. В production он использует тот же образ и тег, что и backend;
+CI/CD обновляет и запускает оба сервиса после миграций. Политика `restart: unless-stopped`
+перезапускает worker после сбоя. `import-worker` обрабатывает импорт файлов и не заменяет workspace-worker.
 
 PostgreSQL worker получает задачу через `SELECT FOR UPDATE SKIP LOCKED`, назначает уникальный
 токен аренды и освобождает транзакцию перед HTTP-вызовом. Аренда длится таймаут операции + 30 секунд.
