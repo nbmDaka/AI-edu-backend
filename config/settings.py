@@ -34,6 +34,23 @@ TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIR
                   'django.template.context_processors.debug', 'django.template.context_processors.request',
                   'django.contrib.auth.context_processors.auth', 'django.contrib.messages.context_processors.messages']}}]
 WSGI_APPLICATION = 'config.wsgi.application'
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'workspace_error': {'format': '{asctime} {levelname} {name} {message}', 'style': '{'},
+    },
+    'handlers': {
+        'workspace_errors': {
+            'class': 'logging.StreamHandler', 'level': 'ERROR', 'formatter': 'workspace_error',
+        },
+    },
+    'loggers': {
+        'apps.activities.workspace': {
+            'handlers': ['workspace_errors'], 'level': 'ERROR', 'propagate': False,
+        },
+    },
+}
 if os.getenv('DATABASE_HOST'):
     DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql', 'NAME': os.getenv('DATABASE_NAME', 'aiedu'),
         'USER': os.getenv('DATABASE_USER', 'aiedu'), 'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),

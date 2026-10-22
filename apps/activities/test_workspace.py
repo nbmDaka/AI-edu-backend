@@ -6,9 +6,10 @@ from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import Mock, patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection, transaction, close_old_connections
 from django.test import TestCase, TransactionTestCase, SimpleTestCase, override_settings
 from django.utils import timezone
@@ -398,11 +399,21 @@ class WorkspaceWorkerTests(WorkspaceFixture, TestCase):
         for error, expected in [(AIError('ai_timeout'), 'ai_timeout'), (RuntimeError('private-secret provider body'), 'worker_error')]:
             self.queue()
             claimed = claim_next_operation()
-            with patch('apps.activities.workspace.worker.run_ai', side_effect=error):
+            with patch('apps.activities.workspace.worker.run_ai', side_effect=error), self.assertLogs(
+                    'apps.activities.workspace.worker', level='ERROR') as captured:
                 execute_operation(claimed)
             claimed.refresh_from_db()
             self.assertEqual(claimed.error_code, expected)
             self.assertNotIn('private-secret', json.dumps(claimed.result))
+            log = ' '.join(captured.output)
+            self.assertEqual(len(captured.records), 1)
+            self.assertIn('"stage": "generate"', log)
+            self.assertIn('"duration_ms":', log)
+            self.assertIn('"timeout_seconds":', log)
+            self.assertNotIn('private-secret', log)
+            if expected == 'worker_error':
+                self.assertIn('"exception_type": "RuntimeError"', log)
+                self.assertIn('"traceback":', log)
 
     def test_http_diagnostics_are_logged_without_changing_public_error(self):
         self.queue()
@@ -421,11 +432,36 @@ class WorkspaceWorkerTests(WorkspaceFixture, TestCase):
         self.assertIn('req_test', log)
         self.assertNotIn('private-secret', log)
 
+    def test_success_does_not_emit_workspace_logs(self):
+        self.queue()
+        claimed = claim_next_operation()
+        with patch('apps.activities.workspace.worker.run_ai', return_value=ai_response()), self.assertNoLogs(
+                'apps.activities.workspace', level='DEBUG'):
+            execute_operation(claimed)
+        claimed.refresh_from_db()
+        self.assertEqual(claimed.status, 'SUCCEEDED')
+
+    def test_invalid_content_is_logged_without_response_text(self):
+        self.queue()
+        claimed = claim_next_operation()
+        with patch('apps.activities.workspace.worker.run_ai', return_value=ai_response({'title': 'private lecture'})), self.assertLogs(
+                'apps.activities.workspace.worker', level='ERROR') as captured:
+            execute_operation(claimed)
+        log = ' '.join(captured.output)
+        self.assertEqual(len(captured.records), 1)
+        self.assertIn('ai_invalid_content', log)
+        self.assertIn('"stage": "apply_result"', log)
+        self.assertIn('"exception_type": "ValidationError"', log)
+        self.assertNotIn('private lecture', log)
+
     def test_expired_lease_is_reclaimed_and_old_worker_is_fenced(self):
         self.queue()
         old = claim_next_operation()
         WorkspaceOperation.objects.filter(pk=old.pk).update(lease_expires_at=timezone.now() - timedelta(seconds=1))
-        self.assertEqual(recover_expired_operations(), 1)
+        with self.assertLogs('apps.activities.workspace.worker', level='ERROR') as captured:
+            self.assertEqual(recover_expired_operations(), 1)
+        self.assertIn('lease_expired_retry', captured.output[0])
+        self.assertIn('"stage": "lease_recovery"', captured.output[0])
         new = claim_next_operation()
         self.assertNotEqual(old.lease_token, new.lease_token)
         self.assertEqual(new.attempts, 2)
@@ -640,6 +676,28 @@ class WorkspaceAIClientTests(SimpleTestCase):
             with self.assertRaises(AIError) as caught:
                 run_ai(operation)
         self.assertEqual(str(caught.exception), 'ai_timeout')
+        self.assertEqual(caught.exception.diagnostics, {'failure_reason': 'process_timeout'})
+
+    def test_network_failures_keep_only_a_bounded_reason(self):
+        for error, code, reason in [(TimeoutError('secret-key'), 'ai_timeout', 'socket_timeout'),
+                                    (URLError(TimeoutError('secret-key')), 'ai_timeout', 'connection_timeout'),
+                                    (URLError('secret-key private URL'), 'ai_connection_error', 'connection_error')]:
+            with self.subTest(reason=reason), patch('apps.activities.workspace.ai.build_opener') as opener:
+                opener.return_value.open.side_effect = error
+                with self.assertRaises(AIError) as caught:
+                    call_api('https://provider.test/v1', 'secret-key', 'model', [], 10)
+            self.assertEqual(caught.exception.code, code)
+            self.assertEqual(caught.exception.diagnostics, {'failure_reason': reason})
+
+    @override_settings(AI_BASE_URL='https://provider.test/v1', AI_API_KEY='secret-key')
+    def test_failed_child_process_does_not_expose_stdout_or_stderr(self):
+        operation = Mock(model='model', timeout_seconds=2, input_data={'messages': []})
+        with patch('apps.activities.workspace.ai.subprocess.run', return_value=Mock(
+                returncode=1, stdout='secret-key private lecture', stderr='secret-key private traceback')):
+            with self.assertRaises(AIError) as caught:
+                run_ai(operation)
+        self.assertEqual(caught.exception.code, 'ai_transport_error')
+        self.assertEqual(caught.exception.diagnostics, {'failure_reason': 'process_exit'})
 
     def test_real_child_process_roundtrip_against_local_mock_provider(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -688,9 +746,23 @@ class WorkspaceWorkerCommandTests(WorkspaceFixture, TransactionTestCase):
             call_command('run_workspace_worker', once=True, stdout=output)
         operation.refresh_from_db()
         self.document.refresh_from_db()
-        self.assertIn('SUCCEEDED', output.getvalue())
+        self.assertEqual(output.getvalue(), '')
         self.assertEqual(operation.status, 'SUCCEEDED')
         self.assertEqual(self.document.content, lecture())
+
+    def test_once_command_logs_unexpected_failure_without_private_exception_text(self):
+        self.queue()
+        output = StringIO()
+        with patch('apps.activities.management.commands.run_workspace_worker.execute_operation',
+                   side_effect=RuntimeError('private-secret provider body')), self.assertLogs(
+                       'apps.activities.workspace.worker', level='ERROR') as captured:
+            with self.assertRaisesMessage(CommandError, 'Workspace worker failed; see error diagnostics'):
+                call_command('run_workspace_worker', once=True, stdout=output)
+        self.assertEqual(output.getvalue(), '')
+        self.assertEqual(len(captured.records), 1)
+        self.assertIn('"exception_type": "RuntimeError"', captured.output[0])
+        self.assertIn('"stage": "worker"', captured.output[0])
+        self.assertNotIn('private-secret', captured.output[0])
 
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'],

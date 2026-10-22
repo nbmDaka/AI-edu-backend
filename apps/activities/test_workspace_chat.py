@@ -16,6 +16,7 @@ from .workspace.limits import reserve_usage, ensure_capacity, WorkspaceLimit
 from .workspace.schemas import validate_lecture
 from .workspace.services import create_operation
 from .workspace.worker import claim_next_operation, execute_operation
+from .workspace.ai import AIError
 
 
 def plan(action='generate', **extra):
@@ -65,6 +66,25 @@ class WorkspaceChatTests(WorkspaceFixture, TestCase):
         self.assertEqual(operation.total_tokens, 600)
         self.assertEqual(len(operation.result['choices']), 5)
         self.assertEqual(provider.call_count, 2)
+
+    def test_chat_timeout_logs_stage_and_budget_without_conversation(self):
+        for stage, responses in [('route', [AIError('ai_timeout', {'failure_reason': 'process_timeout'})]),
+                                 ('generate', [plan(), AIError('ai_timeout', {'failure_reason': 'socket_timeout'})])]:
+            with self.subTest(stage=stage), self.assertLogs('apps.activities.workspace.worker', level='ERROR') as captured:
+                operation, _ = self.chat(responses, prompt='private-secret user message')
+            self.assertEqual(operation.error_code, 'ai_timeout')
+            self.assertEqual(len(captured.records), 1)
+            log = ' '.join(captured.output)
+            self.assertIn(f'"stage": "{stage}"', log)
+            self.assertIn('"stage_timeout_seconds":', log)
+            self.assertIn('"stage_duration_ms":', log)
+            self.assertIn('"attempt": 1', log)
+            self.assertNotIn('private-secret', log)
+
+    def test_successful_chat_does_not_emit_workspace_logs(self):
+        with self.assertNoLogs('apps.activities.workspace', level='DEBUG'):
+            operation, _ = self.chat([plan(), ai_response()])
+        self.assertEqual(operation.status, 'SUCCEEDED')
 
     def test_fourth_clarification_is_forced_to_generate(self):
         self.document.conversation_state = {'questions': 3, 'requirements': {'topic': 'Педагогика'}}

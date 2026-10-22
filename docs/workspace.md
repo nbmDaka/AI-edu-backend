@@ -178,13 +178,34 @@ Worker запускает до 10 параллельных операций (`--
 `ai_invalid_response`, `ai_invalid_content`, `revision_conflict`, `access_revoked`, `submission_closed`.
 Ошибки содержат только безопасные коды, без ключей, заголовков или тела ошибок провайдера.
 
-Для диагностики AI-ошибок worker пишет в логи ID операции и внутренний код ошибки.
+Мастерская пишет **только ошибки** уровня `ERROR` в stderr контейнера `workspace-worker`,
+с датой и временем. Успешные операции, опрос очереди и штатная остановка не логируются.
+Глобальное логирование Django не отключается: отдельный обработчик настроен для
+`apps.activities.workspace`, без дублирования записей в корневом logger.
+
+Каждый сбой содержит ID операции, `document_id`, `kind`, номер попытки `attempt`,
+`duration_ms`, общий лимит `timeout_seconds` и этап `stage`: `route` (определение действия),
+`route_validation`, `parameters_validation`, `quota`, `generate`, `content_validation`,
+`docx`, `apply_result`, `context`, `lease_validation`, `lease_recovery` или `worker`.
+Для этапов AI-вызова также доступны `stage_timeout_seconds` и `stage_duration_ms`.
+Так видно, сколько времени осталось на генерацию после определения действия.
+
+Для таймаутов `failure_reason` отличает `socket_timeout` / `connection_timeout`
+от принудительного завершения дочернего процесса `process_timeout`.
+Ошибки соединения, запуска процесса и разбора ответа также имеют безопасную причину.
+Ошибки валидации, экспорта, применения результата и неожиданные исключения больше
+не остаются без диагностики. Для исключений сохраняются только тип и до восьми кадров
+стека (имя файла, функция, строка), без текста исключения, исходных строк и локальных переменных.
+Истёкшие аренды логируются как `lease_expired_retry` при восстановлении либо
+`operation_timeout` после последней попытки. Это записи о сбоях worker, а не об успешных повторах.
+
 Для HTTP-ошибок добавляются `http_status`, `provider_code`, `provider_type`, `provider_param`
 и `request_id` (из `x-request-id`), если провайдер их вернул. Например:
 `Workspace operation 5: ai_http_error diagnostics={"http_status": 400, "provider_code": "unsupported_parameter", "provider_param": "response_format", "request_id": "req_example"}`.
 Допускаются только ограниченные по длине идентификаторы; значения с ключом API отбрасываются.
 Текст `message`, тело ответа, запрос пользователя и заголовок Authorization не логируются.
-Диагностика доступна через `docker compose logs --tail 100 workspace-worker`;
+Диагностика доступна через `docker compose logs --since 1h --tail 100 workspace-worker`
+(добавьте `-f` для наблюдения за новыми ошибками);
 в API операции по-прежнему возвращается только внутренний `error_code`.
 
 В операции сохраняются фактическая модель (или запрошенная, если провайдер не вернул имя), длительность

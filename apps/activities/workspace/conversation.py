@@ -7,6 +7,7 @@ from rest_framework import serializers
 from .schemas import validate_parameters, validate_lecture
 from .ai import AIError, run_ai
 from .limits import reserve_usage
+from .diagnostics import mark_stage
 
 
 class Requirements(serializers.Serializer):
@@ -85,7 +86,9 @@ def execute_chat(operation, document, plugin):
     started = time.monotonic()
     route = copy(operation)
     route.input_data = {**operation.input_data, 'max_completion_tokens': 2048}
+    mark_stage(operation, 'route', route.timeout_seconds)
     response = run_ai(route)
+    mark_stage(operation, 'route_validation')
     serializer = Plan(data=response['payload'])
     if not serializer.is_valid():
         raise AIError('ai_invalid_response')
@@ -120,10 +123,12 @@ def execute_chat(operation, document, plugin):
     parameters.update(requirements)
     if parameters.get('topic') == 'По запросу пользователя':
         parameters['topic'] = operation.input_data['prompt'][:300]
+    mark_stage(operation, 'parameters_validation')
     parameters = validate_parameters(parameters)
     categories = [action] if action in ('generate', 'edit') else []
     if wants_docx or action == 'export':
         categories.append('docx')
+    mark_stage(operation, 'quota')
     reserve_usage(operation, categories)
     payload.update({'parameters': parameters, 'docx': wants_docx or action == 'export',
                     'choices': suggestions(language)})
@@ -138,7 +143,9 @@ def execute_chat(operation, document, plugin):
             messages[0]['content'] += ' Modify only what was requested and preserve all other sections and their order.'
         generate.input_data = {'messages': messages, 'max_completion_tokens': 16000}
         generate.timeout_seconds = max(1, operation.timeout_seconds - int(time.monotonic() - started))
+        mark_stage(operation, 'generate', generate.timeout_seconds)
         generated = run_ai(generate)
+        mark_stage(operation, 'content_validation')
         validate_lecture(generated['payload'])
         payload['content'] = generated['payload']
         response = combine_usage(response, generated)

@@ -24,6 +24,11 @@ def safe_diagnostics(values, api_key=''):
     reason = values.get('finish_reason')
     if isinstance(reason, str) and reason in ('length', 'content_filter', 'tool_calls', 'function_call'):
         result['finish_reason'] = reason
+    reason = values.get('failure_reason')
+    if isinstance(reason, str) and reason in ('socket_timeout', 'connection_timeout', 'connection_error',
+            'process_timeout', 'process_start', 'process_exit', 'invalid_json', 'invalid_payload',
+            'invalid_envelope', 'unexpected_transport'):
+        result['failure_reason'] = reason
     for name in ('max_completion_tokens', 'completion_tokens', 'reasoning_tokens'):
         value = values.get(name)
         if type(value) is int and 0 <= value <= 2_147_483_647:
@@ -89,11 +94,13 @@ def call_api(base_url, api_key, model, messages, timeout, max_completion_tokens=
         raise AIError('ai_rate_limited' if error.code == 429 else 'ai_http_error',
                       http_diagnostics(error, api_key)) from None
     except (TimeoutError, socket.timeout):
-        raise AIError('ai_timeout') from None
+        raise AIError('ai_timeout', {'failure_reason': 'socket_timeout'}) from None
     except URLError as error:
-        raise AIError('ai_timeout' if isinstance(error.reason, (TimeoutError, socket.timeout)) else 'ai_connection_error') from None
+        timeout_error = isinstance(error.reason, (TimeoutError, socket.timeout))
+        raise AIError('ai_timeout' if timeout_error else 'ai_connection_error',
+                      {'failure_reason': 'connection_timeout' if timeout_error else 'connection_error'}) from None
     except (OSError, ValueError):
-        raise AIError('ai_connection_error') from None
+        raise AIError('ai_connection_error', {'failure_reason': 'connection_error'}) from None
     try:
         envelope = json.loads(raw)
         choice = envelope['choices'][0]
@@ -110,10 +117,10 @@ def call_api(base_url, api_key, model, messages, timeout, max_completion_tokens=
             })
         content = choice['message']['content']
         if not isinstance(content, str):
-            raise AIError('ai_invalid_response')
+            raise AIError('ai_invalid_response', {'failure_reason': 'invalid_payload'})
         payload = json.loads(content)
         if not isinstance(payload, dict):
-            raise AIError('ai_invalid_response')
+            raise AIError('ai_invalid_response', {'failure_reason': 'invalid_payload'})
         usage = envelope.get('usage') or {}
         if not isinstance(usage, dict):
             usage = {}
@@ -134,8 +141,10 @@ def call_api(base_url, api_key, model, messages, timeout, max_completion_tokens=
                 'output_tokens': token_count(usage.get('completion_tokens')),
                 'total_tokens': token_count(usage.get('total_tokens')),
                 'cost': cost, 'cost_currency': currency if cost is not None and isinstance(currency, str) and len(currency) <= 10 else ''}
-    except (KeyError, IndexError, TypeError, ValueError, RecursionError):
-        raise AIError('ai_invalid_response') from None
+    except (ValueError, RecursionError):
+        raise AIError('ai_invalid_response', {'failure_reason': 'invalid_json'}) from None
+    except (KeyError, IndexError, TypeError, AttributeError):
+        raise AIError('ai_invalid_response', {'failure_reason': 'invalid_envelope'}) from None
 
 
 def run_ai(operation):
@@ -150,18 +159,18 @@ def run_ai(operation):
             input=json.dumps(data), text=True, encoding='utf-8', capture_output=True,
             timeout=operation.timeout_seconds, cwd=settings.BASE_DIR)
     except subprocess.TimeoutExpired:
-        raise AIError('ai_timeout') from None
+        raise AIError('ai_timeout', {'failure_reason': 'process_timeout'}) from None
     except OSError:
-        raise AIError('ai_connection_error') from None
+        raise AIError('ai_connection_error', {'failure_reason': 'process_start'}) from None
     if result.returncode:
-        raise AIError('ai_transport_error')
+        raise AIError('ai_transport_error', {'failure_reason': 'process_exit'})
     try:
         output = json.loads(result.stdout)
         if 'error_code' in output:
             raise AIError(output['error_code'], safe_diagnostics(output.get('diagnostics'), settings.AI_API_KEY))
         return output
     except (TypeError, ValueError):
-        raise AIError('ai_invalid_response') from None
+        raise AIError('ai_invalid_response', {'failure_reason': 'invalid_json'}) from None
 
 
 if __name__ == '__main__':
@@ -171,4 +180,4 @@ if __name__ == '__main__':
         print(json.dumps({'error_code': error.code, 'diagnostics': error.diagnostics}))
     except Exception:
         # No provider response bodies, credentials, URLs or exception messages in output.
-        print(json.dumps({'error_code': 'ai_transport_error'}))
+        print(json.dumps({'error_code': 'ai_transport_error', 'diagnostics': {'failure_reason': 'unexpected_transport'}}))

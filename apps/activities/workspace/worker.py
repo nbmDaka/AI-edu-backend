@@ -1,7 +1,5 @@
 import time
 import uuid
-import json
-import logging
 from datetime import timedelta
 from django.db import connection, transaction
 from django.db.models import F
@@ -13,10 +11,10 @@ from apps.education.models import PracticeSubmission
 from apps.activities.models import WorkspaceDocument, WorkspaceMessage, WorkspaceOperation, WorkspaceArtifact
 from .ai import AIError, run_ai
 from .services import workspace_plugin
+from .diagnostics import mark_stage, log_operation_error
 
 MAX_ATTEMPTS = 3
 LEASE_GRACE_SECONDS = 30
-logger = logging.getLogger(__name__)
 
 
 def apply_chat_result(operation, document, response):
@@ -70,6 +68,9 @@ def recover_expired_operations():
                 error_code='' if retry else 'operation_timeout', finished_at=None if retry else now,
                 duration_ms=elapsed)
             recovered += changed
+            if changed:
+                mark_stage(operation, 'lease_recovery')
+                log_operation_error(operation, 'lease_expired_retry' if retry else 'operation_timeout', elapsed)
     return recovered
 
 
@@ -99,7 +100,7 @@ def context_error(operation, document, submission, user):
 
 
 @transaction.atomic
-def finish_operation(claim, response=None, error_code='', duration_ms=0):
+def finish_operation(claim, response=None, error_code='', duration_ms=0, diagnostics=None, error=None):
     # Same lock order as document editing / Practice Engine submit. No HTTP under DB locks.
     context = WorkspaceDocument.objects.filter(pk=claim.document_id).values('owner_id', 'submission_id').first()
     if context is None:
@@ -116,9 +117,16 @@ def finish_operation(claim, response=None, error_code='', duration_ms=0):
     if response:
         for name in ('model', 'input_tokens', 'output_tokens', 'total_tokens', 'cost', 'cost_currency'):
             setattr(operation, name, response.get(name))
-    error_code = error_code or ('operation_timeout' if operation.lease_expires_at <= now else '')
-    error_code = error_code or context_error(operation, document, submission, user)
     if not error_code:
+        if operation.lease_expires_at <= now:
+            mark_stage(claim, 'lease_validation')
+            error_code = 'operation_timeout'
+        else:
+            error_code = context_error(operation, document, submission, user)
+            if error_code:
+                mark_stage(claim, 'context')
+    if not error_code:
+        mark_stage(claim, 'apply_result')
         try:
             payload = response['payload']
             if operation.kind == 'chat':
@@ -139,8 +147,9 @@ def finish_operation(claim, response=None, error_code='', duration_ms=0):
                 operation.result = payload
                 text = payload['improved_prompt']
             WorkspaceMessage.objects.create(document=document, operation=operation, role='assistant', text=text)
-        except (ValidationError, KeyError, TypeError, ValueError, RecursionError):
+        except (ValidationError, KeyError, TypeError, ValueError, RecursionError) as caught:
             error_code = 'ai_invalid_content'
+            error = caught
             operation.result = {}
     operation.error_code = error_code
     operation.status = 'FAILED' if error_code else 'SUCCEEDED'
@@ -148,12 +157,16 @@ def finish_operation(claim, response=None, error_code='', duration_ms=0):
     operation.lease_token = None
     operation.lease_expires_at = None
     operation.save()
+    if error_code:
+        log_operation_error(claim, error_code, duration_ms, diagnostics, error)
     return True
 
 
 def execute_operation(operation):
     started = time.monotonic()
     response, error_code = None, ''
+    diagnostics, failure = None, None
+    mark_stage(operation, 'context')
     try:
         document = WorkspaceDocument.objects.select_related(
             'owner', 'submission__item__module__course__learning_track').get(pk=operation.document_id)
@@ -164,16 +177,20 @@ def execute_operation(operation):
                 response = execute_chat(operation, document, workspace_plugin(document.submission))
                 if response['payload'].get('docx'):
                     from .docx_export import render_docx
+                    mark_stage(operation, 'docx')
                     response['docx_data'] = render_docx(response['payload'].get('content', document.content))
             else:
+                mark_stage(operation, 'generate' if operation.kind == 'generate' else 'improve_prompt', operation.timeout_seconds)
                 response = run_ai(operation)
     except AIError as error:
         error_code = error.code
-        logger.warning('Workspace operation %s: %s diagnostics=%s',
-                       operation.pk, error.code, json.dumps(error.diagnostics, sort_keys=True))
-    except ValidationError:
+        diagnostics = error.diagnostics
+    except ValidationError as error:
         error_code = 'ai_invalid_content'
+        failure = error
     except Exception as error:
         from .limits import WorkspaceLimit
         error_code = 'workspace_limit' if isinstance(error, WorkspaceLimit) else 'worker_error'
-    return finish_operation(operation, response, error_code, int((time.monotonic() - started) * 1000))
+        failure = error
+    return finish_operation(operation, response, error_code, int((time.monotonic() - started) * 1000),
+                            diagnostics=diagnostics, error=failure)
