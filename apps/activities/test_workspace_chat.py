@@ -87,7 +87,8 @@ class WorkspaceChatTests(WorkspaceFixture, TestCase):
         self.assertIn('Для кого?', context)
 
     def test_edit_uses_current_lecture_and_separate_quota(self):
-        self.document.content = lecture()
+        # JSON object key order can change after a PostgreSQL JSONField round trip.
+        self.document.content = json.loads(json.dumps(lecture(), sort_keys=True))
         self.document.save()
         changed = lecture()
         changed['sections'][5]['content']['content'][0]['content'][0]['text'] = 'Новый пример'
@@ -96,7 +97,8 @@ class WorkspaceChatTests(WorkspaceFixture, TestCase):
         self.assertEqual(self.document.content, changed)
         self.assertEqual(WorkspaceUsage.objects.get().category, 'edit')
         messages = provider.call_args_list[1].args[0].input_data['messages']
-        self.assertIn(json.dumps(lecture(), ensure_ascii=False), [m['content'] for m in messages])
+        self.assertEqual([json.loads(m['content']) for m in messages if m['role'] == 'assistant'],
+                         [lecture()])
 
     def test_docx_download_is_private_immutable_and_free_to_repeat(self):
         operation, _ = self.chat([plan(docx=True), ai_response()])
