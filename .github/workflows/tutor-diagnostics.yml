@@ -46,6 +46,15 @@ jobs:
           print('TUTOR_CONFIG', json.dumps({name: bool(getattr(settings, name, os.environ.get(name, ''))) for name in names}))
           base = settings.AI_SERVICE_URL
           print('TUTOR_HOST', urlsplit(base).hostname)
+          print('WORKSPACE_PROVIDER', urlsplit(settings.AI_BASE_URL).hostname, settings.AI_MODEL)
+          if settings.AI_BASE_URL and settings.AI_MODEL:
+              from apps.activities.workspace.ai import call_api, AIError
+              try:
+                  result = call_api(settings.AI_BASE_URL, settings.AI_API_KEY, settings.AI_MODEL,
+                      [{'role': 'user', 'content': 'Return only this JSON: {"ok": true}'}], 30)
+                  print('WORKSPACE_PROVIDER_CHECK', result['payload'].get('ok') is True)
+              except AIError as error:
+                  print('WORKSPACE_PROVIDER_CHECK', error.code)
           if base:
               try:
                   with urllib.request.urlopen(base.rstrip('/') + '/api/health', timeout=15) as response:
