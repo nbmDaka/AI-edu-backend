@@ -1,4 +1,20 @@
 services:
+  ai-tutor:
+    image: ${AI_TUTOR_IMAGE:-ai-edu-ai-tutor}:${IMAGE_TAG:-latest}
+    env_file: .env.ai-tutor
+    environment:
+      NODE_OPTIONS: --max-old-space-size=192
+    volumes: [ai_tutor_data:/app/data]
+    init: true
+    restart: unless-stopped
+    mem_limit: 384m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
   workspace-worker:
     image: ${BACKEND_IMAGE:-ai-edu-backend}:${IMAGE_TAG:-latest}
     environment:
@@ -12,11 +28,12 @@ services:
   backend:
     image: ${BACKEND_IMAGE:-ai-edu-backend}:${IMAGE_TAG:-latest}
     restart: unless-stopped
-    command: ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"]
+    command: ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --worker-class gthread --threads 4 --timeout 180"]
     environment:
       DEBUG: "false"
     volumes: [static_data:/app/staticfiles]
     ports: !override ["127.0.0.1:4000:8000"]
 volumes:
+  ai_tutor_data:
   static_data:
     name: aiedu-static

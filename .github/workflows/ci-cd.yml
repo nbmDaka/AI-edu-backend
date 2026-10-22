@@ -49,6 +49,8 @@ jobs:
         run: python manage.py check
       - name: Check migration files
         run: python manage.py makemigrations --check --dry-run
+      - name: Check server-only tutor configuration
+        run: python -m unittest discover -s ops -p 'test_*.py'
       - name: Run tests
         run: python manage.py test
       - name: Validate OpenAPI schema
@@ -102,6 +104,7 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.name }}
       import_image: ${{ steps.image.outputs.name }}-import-worker
+      ai_image: ${{ steps.image.outputs.name }}-ai-tutor
     steps:
       - uses: actions/checkout@v6
       - name: Set image name
@@ -141,12 +144,34 @@ jobs:
       - name: Verify PDF and embedded-image OCR in the worker image
         timeout-minutes: 20
         run: docker run --rm -e DEBUG=true -e RUN_LECTURE_OCR_TESTS=1 "${{ steps.image.outputs.name }}-import-worker:${{ github.sha }}" python manage.py test apps.lessons.test_import_ocr --noinput
+      - name: Build and publish AI gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: services/ai-tutor
+          load: true
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ steps.image.outputs.name }}-ai-tutor:${{ github.sha }}
+            ${{ steps.image.outputs.name }}-ai-tutor:latest
+          cache-from: type=gha,scope=ai-tutor
+          cache-to: type=gha,mode=max,scope=ai-tutor
+      - name: Check gateway image health, authentication and writable database
+        env:
+          AI_IMAGE: ${{ steps.image.outputs.name }}-ai-tutor:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker run -d --name tutor-ci -p 127.0.0.1:3301:3001 -e OPENAI_API_KEY=ci-only-placeholder -e API_SHARED_KEY=ci-only-service-key -e AI_DB_PROVIDER=sqlite "$AI_IMAGE"
+          trap 'docker logs tutor-ci; docker rm -f tutor-ci' EXIT
+          python validation/tutor_image_smoke.py
 
   deploy:
     if: github.event_name == 'push'
     needs: publish
     runs-on: ubuntu-latest
     environment: production
+    concurrency:
+      group: backend-production-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
       - name: Deploy backend to server
@@ -159,11 +184,14 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           BACKEND_IMAGE: ${{ needs.publish.outputs.image }}
           IMPORT_WORKER_IMAGE: ${{ needs.publish.outputs.import_image }}
+          AI_TUTOR_IMAGE: ${{ needs.publish.outputs.ai_image }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           set -euo pipefail
+          test -n "$OPENAI_API_KEY" || { echo 'OPENAI_API_KEY repository secret is required'; exit 1; }
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
@@ -172,17 +200,25 @@ jobs:
           trap 'ssh-agent -k' EXIT
           printf '%s\n' "$DEPLOY_SSH_KEY" | ssh-add -
           scp -o BatchMode=yes docker-compose.yml docker-compose.prod.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+          ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/ops'"
+          scp -o BatchMode=yes ops/configure_tutor.py "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/ops/"
           {
             printf 'cd %q\n' "$DEPLOY_PATH"
             printf 'export BACKEND_IMAGE=%q\n' "$BACKEND_IMAGE"
             printf 'export IMPORT_WORKER_IMAGE=%q\n' "$IMPORT_WORKER_IMAGE"
+            printf 'export AI_TUTOR_IMAGE=%q\n' "$AI_TUTOR_IMAGE"
+            printf 'export OPENAI_API_KEY=%q\n' "$OPENAI_API_KEY"
             printf 'export IMAGE_TAG=%q\n' "$IMAGE_TAG"
             printf 'export GHCR_USERNAME=%q\n' "$GHCR_USERNAME"
             printf 'export GHCR_PULL_TOKEN=%q\n' "$GHCR_PULL_TOKEN"
             cat <<'REMOTE'
           set -euo pipefail
+          umask 077
+          python3 ops/configure_tutor.py
+          unset OPENAI_API_KEY
           echo "$GHCR_PULL_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull backend minio-init workspace-worker import-worker
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull backend minio-init workspace-worker import-worker ai-tutor
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --no-build --wait --wait-timeout 120 ai-tutor
           docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm backend python manage.py migrate --noinput </dev/null
           docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --no-build --wait --wait-timeout 120 backend workspace-worker import-worker
           backend_container_id="$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q backend)"
@@ -191,7 +227,8 @@ jobs:
           workspace_worker_container_id="$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q workspace-worker)"
           test -n "$workspace_worker_container_id"
           test "$(docker inspect --format '{{.State.Status}}' "$workspace_worker_container_id")" = running
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps backend workspace-worker
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backend python -c "import os, json, urllib.request; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings'); from django.conf import settings; response=urllib.request.urlopen(settings.AI_SERVICE_URL + '/api/health', timeout=10); assert response.status == 200; assert settings.AI_SERVICE_API_KEY; print('Tutor health verified from backend')"
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps backend workspace-worker ai-tutor
           docker logout ghcr.io
           REMOTE
           } | ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'
