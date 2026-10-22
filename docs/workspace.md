@@ -132,6 +132,15 @@ PostgreSQL worker получает задачу через `SELECT FOR UPDATE SK
 `ai_invalid_response`, `ai_invalid_content`, `revision_conflict`, `access_revoked`, `submission_closed`.
 Ошибки содержат только безопасные коды, без ключей, заголовков или тела ошибок провайдера.
 
+Для диагностики AI-ошибок worker пишет в логи ID операции и внутренний код ошибки.
+Для HTTP-ошибок добавляются `http_status`, `provider_code`, `provider_type`, `provider_param`
+и `request_id` (из `x-request-id`), если провайдер их вернул. Например:
+`Workspace operation 5: ai_http_error diagnostics={"http_status": 400, "provider_code": "unsupported_parameter", "provider_param": "response_format", "request_id": "req_example"}`.
+Допускаются только ограниченные по длине идентификаторы; значения с ключом API отбрасываются.
+Текст `message`, тело ответа, запрос пользователя и заголовок Authorization не логируются.
+Диагностика доступна через `docker compose logs --tail 100 workspace-worker`;
+в API операции по-прежнему возвращается только внутренний `error_code`.
+
 В операции сохраняются фактическая модель (или запрошенная, если провайдер не вернул имя), длительность
 последнего выполнения в миллисекундах и `attempts`. `input_tokens/output_tokens/total_tokens` берутся
 из `usage.prompt_tokens/completion_tokens/total_tokens`. Стоимость берётся из `usage.cost` или `cost`,

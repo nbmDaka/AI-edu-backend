@@ -4,7 +4,7 @@ import uuid
 from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal
-from io import StringIO
+from io import BytesIO, StringIO
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
@@ -404,6 +404,23 @@ class WorkspaceWorkerTests(WorkspaceFixture, TestCase):
             self.assertEqual(claimed.error_code, expected)
             self.assertNotIn('private-secret', json.dumps(claimed.result))
 
+    def test_http_diagnostics_are_logged_without_changing_public_error(self):
+        self.queue()
+        claimed = claim_next_operation()
+        error = AIError('ai_http_error', {'http_status': 401, 'provider_code': 'invalid_api_key',
+                                       'request_id': 'req_test', 'message': 'private-secret'})
+        with patch('apps.activities.workspace.worker.run_ai', side_effect=error):
+            with self.assertLogs('apps.activities.workspace.worker', level='WARNING') as captured:
+                execute_operation(claimed)
+        claimed.refresh_from_db()
+        self.assertEqual(claimed.error_code, 'ai_http_error')
+        self.assertEqual(claimed.result, {})
+        log = ' '.join(captured.output)
+        self.assertIn(f'Workspace operation {claimed.pk}', log)
+        self.assertIn('"http_status": 401', log)
+        self.assertIn('req_test', log)
+        self.assertNotIn('private-secret', log)
+
     def test_expired_lease_is_reclaimed_and_old_worker_is_fenced(self):
         self.queue()
         old = claim_next_operation()
@@ -524,6 +541,53 @@ class WorkspaceAIClientTests(SimpleTestCase):
             with self.assertRaises(AIError) as caught:
                 call_api('https://provider.test/v1', 'secret-key', 'model', [], 10)
         self.assertEqual(str(caught.exception), 'ai_rate_limited')
+
+    def test_http_diagnostics_keep_status_and_identifiers_only(self):
+        for status in (400, 401, 429, 503):
+            with self.subTest(status=status):
+                body = BytesIO(json.dumps({'error': {'code': 'invalid_api_key', 'type': 'invalid_request_error',
+                    'param': 'messages[0].content', 'message': 'secret-key private lecture'}}).encode())
+                error = HTTPError('secret-url', status, 'secret-reason', {'x-request-id': 'req_test'}, body)
+                with patch('apps.activities.workspace.ai.build_opener') as opener:
+                    opener.return_value.open.side_effect = error
+                    with self.assertRaises(AIError) as caught:
+                        call_api('https://provider.test/v1', 'secret-key', 'model', [], 10)
+                self.assertEqual(caught.exception.diagnostics, {'http_status': status,
+                    'provider_code': 'invalid_api_key', 'provider_type': 'invalid_request_error',
+                    'provider_param': 'messages[0].content', 'request_id': 'req_test'})
+                self.assertEqual(str(caught.exception), 'ai_rate_limited' if status == 429 else 'ai_http_error')
+                self.assertTrue(body.closed)
+
+    def test_http_diagnostics_reject_secrets_and_log_injection(self):
+        body = BytesIO(json.dumps({'error': {'code': 'prefix-secret-key', 'type': 'sk-other-secret',
+                                          'param': 'messages\nFORGED LOG'}}).encode())
+        error = HTTPError('secret-url', 400, 'secret-reason', {'x-request-id': 'r' * 129}, body)
+        with patch('apps.activities.workspace.ai.build_opener') as opener:
+            opener.return_value.open.side_effect = error
+            with self.assertRaises(AIError) as caught:
+                call_api('https://provider.test/v1', 'secret-key', 'model', [], 10)
+        self.assertEqual(caught.exception.diagnostics, {'http_status': 400})
+
+    def test_malformed_or_oversized_http_errors_preserve_status(self):
+        for raw in (b'<html>private-secret</html>', b'[]', b'{"error": []}', b'x' * 16_385):
+            with self.subTest(raw_length=len(raw)):
+                error = HTTPError('secret-url', 502, 'secret-reason', {'x-request-id': 'req_test'}, BytesIO(raw))
+                with patch('apps.activities.workspace.ai.build_opener') as opener:
+                    opener.return_value.open.side_effect = error
+                    with self.assertRaises(AIError) as caught:
+                        call_api('https://provider.test/v1', 'secret-key', 'model', [], 10)
+                self.assertEqual(caught.exception.diagnostics, {'http_status': 502, 'request_id': 'req_test'})
+
+    @override_settings(AI_BASE_URL='https://provider.test/v1', AI_API_KEY='secret-key')
+    def test_child_process_diagnostics_are_validated_before_logging(self):
+        operation = Mock(model='model', timeout_seconds=2, input_data={'messages': []})
+        output = {'error_code': 'ai_http_error', 'diagnostics': {'http_status': 400, 'provider_code': 'unsupported_parameter',
+                  'provider_type': 'secret-key', 'request_id': 'req_test', 'message': 'private lecture'}}
+        with patch('apps.activities.workspace.ai.subprocess.run', return_value=Mock(returncode=0, stdout=json.dumps(output))):
+            with self.assertRaises(AIError) as caught:
+                run_ai(operation)
+        self.assertEqual(caught.exception.diagnostics, {'http_status': 400, 'provider_code': 'unsupported_parameter',
+                                                       'request_id': 'req_test'})
 
     @override_settings(AI_BASE_URL='https://provider.test/v1', AI_API_KEY='secret-key')
     def test_process_timeout_is_hard_and_redacted(self):

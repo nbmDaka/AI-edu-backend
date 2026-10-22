@@ -1,5 +1,6 @@
 """Bounded OpenAI-compatible HTTP transport. The child process never touches Django/DB."""
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -9,11 +10,47 @@ from urllib.parse import urlsplit
 from urllib.request import Request, HTTPRedirectHandler, build_opener
 
 MAX_RESPONSE_BYTES = 1_000_000
+MAX_ERROR_BYTES = 16_384
+
+
+def safe_diagnostics(values, api_key=''):
+    """Only bounded identifiers cross the process boundary; never free-form messages."""
+    if not isinstance(values, dict):
+        return {}
+    result = {}
+    status = values.get('http_status')
+    if type(status) is int and 100 <= status <= 599:
+        result['http_status'] = status
+    for name in ('provider_code', 'provider_type', 'provider_param', 'request_id'):
+        value = values.get(name)
+        if (isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_.\[\]-]{1,128}', value)
+                and 'sk-' not in value.lower() and not (api_key and api_key in value)):
+            result[name] = value
+    return result
+
+
+def http_diagnostics(error, api_key):
+    values = {'http_status': error.code,
+              'request_id': error.headers.get('x-request-id') if error.headers else None}
+    try:
+        raw = error.read(MAX_ERROR_BYTES + 1)
+        if len(raw) <= MAX_ERROR_BYTES:
+            envelope = json.loads(raw)
+            detail = envelope.get('error') if isinstance(envelope, dict) else None
+            if isinstance(detail, dict):
+                for field in ('code', 'type', 'param'):
+                    values['provider_' + field] = detail.get(field)
+    except (OSError, ValueError, TypeError, RecursionError):
+        pass  # Diagnostics must preserve the original HTTP error even for HTML/broken bodies.
+    finally:
+        error.close()
+    return safe_diagnostics(values, api_key)
 
 
 class AIError(Exception):
-    def __init__(self, code):
+    def __init__(self, code, diagnostics=None):
         self.code = code
+        self.diagnostics = safe_diagnostics(diagnostics)
         super().__init__(code)
 
 
@@ -41,7 +78,8 @@ def call_api(base_url, api_key, model, messages, timeout):
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise AIError('ai_response_too_large')
     except HTTPError as error:
-        raise AIError('ai_rate_limited' if error.code == 429 else 'ai_http_error') from None
+        raise AIError('ai_rate_limited' if error.code == 429 else 'ai_http_error',
+                      http_diagnostics(error, api_key)) from None
     except (TimeoutError, socket.timeout):
         raise AIError('ai_timeout') from None
     except URLError as error:
@@ -102,7 +140,7 @@ def run_ai(operation):
     try:
         output = json.loads(result.stdout)
         if 'error_code' in output:
-            raise AIError(output['error_code'])
+            raise AIError(output['error_code'], safe_diagnostics(output.get('diagnostics'), settings.AI_API_KEY))
         return output
     except (TypeError, ValueError):
         raise AIError('ai_invalid_response') from None
@@ -112,7 +150,7 @@ if __name__ == '__main__':
     try:
         print(json.dumps(call_api(**json.load(sys.stdin)), ensure_ascii=False))
     except AIError as error:
-        print(json.dumps({'error_code': error.code}))
+        print(json.dumps({'error_code': error.code, 'diagnostics': error.diagnostics}))
     except Exception:
         # No provider response bodies, credentials, URLs or exception messages in output.
         print(json.dumps({'error_code': 'ai_transport_error'}))

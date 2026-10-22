@@ -1,5 +1,7 @@
 import time
 import uuid
+import json
+import logging
 from datetime import timedelta
 from django.db import connection, transaction
 from django.db.models import F
@@ -14,6 +16,7 @@ from .services import workspace_plugin
 
 MAX_ATTEMPTS = 3
 LEASE_GRACE_SECONDS = 30
+logger = logging.getLogger(__name__)
 
 
 def locked_queue(queryset):
@@ -124,6 +127,8 @@ def execute_operation(operation):
             response = run_ai(operation)
     except AIError as error:
         error_code = error.code
+        logger.warning('Workspace operation %s: %s diagnostics=%s',
+                       operation.pk, error.code, json.dumps(error.diagnostics, sort_keys=True))
     except Exception:
         # Unexpected exceptions must not persist arbitrary secret-bearing text.
         error_code = 'worker_error'
