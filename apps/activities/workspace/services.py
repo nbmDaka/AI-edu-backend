@@ -105,12 +105,18 @@ def create_operation(user, document, data):
         raise Conflict('Ревизия документа устарела')
     if document.operations.filter(status__in=['PENDING', 'RUNNING']).exists():
         raise Conflict('Для документа уже выполняется AI-операция')
+    from .limits import ensure_capacity
+    ensure_capacity(user)
     if not settings.AI_BASE_URL or not settings.AI_MODEL:
         raise AIUnavailable()
     parameters = plugin.validate_workspace_parameters(document.parameters)
     messages = plugin.workspace_prompt(data['kind'], parameters, data['prompt'])
     history = list(document.messages.filter(operation__status='SUCCEEDED').order_by('-id')[:12])
-    messages[1:1] = [{'role': row.role, 'content': row.text} for row in reversed(history)]
+    history = [{'role': row.role, 'content': row.text} for row in reversed(history)]
+    messages[1:1] = history
+    if data['kind'] == 'chat':
+        from .conversation import router_messages
+        messages = router_messages(document, history, data['prompt'])
     if document.content and data['kind'] == 'generate':
         import json
         messages.insert(-1, {'role': 'assistant', 'content': json.dumps(document.content, ensure_ascii=False)})
@@ -119,6 +125,9 @@ def create_operation(user, document, data):
         timeout_seconds=settings.AI_TIMEOUT_SECONDS,
         input_data={'parameters': parameters, 'prompt': data['prompt'],
                     'messages': messages})
+    if data['kind'] != 'chat':
+        from .limits import reserve_usage
+        reserve_usage(operation, ['edit' if document.content or data['kind'] == 'improve_prompt' else 'generate'])
     WorkspaceMessage.objects.create(document=document, operation=operation, role='user', text=data['prompt'])
     return operation
 

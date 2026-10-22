@@ -1,5 +1,6 @@
 """Lecture v1 and the small, safe Tiptap subset already supported by the frontend."""
 import json
+import re
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from apps.activities.serializers import StrictSerializer
@@ -119,4 +120,11 @@ def validate_lecture(value):
                 not isinstance(section['title'], str) or not section['title'].strip() or len(section['title']) > 200):
             raise ValidationError({'content': 'Некорректный раздел или стабильный ID'})
         validate_tiptap(section['content'])
+    def words(node):
+        if node.get('type') == 'text':
+            return len(re.findall(r'\S+', node['text']))
+        return sum(words(child) for child in node.get('content', []))
+    count = len(value['title'].split()) + sum(len(section['title'].split()) + words(section['content']) for section in sections)
+    if count > 3000:
+        raise ValidationError({'content': 'Лекция должна содержать не более 3000 слов'})
     return value

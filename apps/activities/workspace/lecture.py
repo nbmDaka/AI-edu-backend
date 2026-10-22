@@ -50,6 +50,7 @@ def make_lecture_plugin(checklist_class):
                     'listItem begins with paragraph. Text nodes use text; blocks use content arrays. '
                     'Text marks may be bold, italic, code, or link with attrs.href (http/https/mailto). '
                     'No HTML, images, unknown keys or markdown wrappers. All sections must contain useful material. '
+                    'Always return a complete lecture, not only an outline. Maximum 3000 words including all headings. '
                     'Infer the topic, title, audience, duration and learning outcomes from the conversation. '
                     'The user request takes precedence over default parameters, including language. '
                     'For follow-up requests, revise the previous lecture and return the complete updated lecture.'

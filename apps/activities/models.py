@@ -148,6 +148,7 @@ class WorkspaceDocument(models.Model):
     schema_version = models.PositiveIntegerField(default=1)
     parameters = models.JSONField(default=dict)
     content = models.JSONField(default=dict)
+    conversation_state = models.JSONField(default=dict)
     revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -157,6 +158,7 @@ class WorkspaceOperation(models.Model):
     class Kind(models.TextChoices):
         GENERATE = 'generate'
         IMPROVE_PROMPT = 'improve_prompt'
+        CHAT = 'chat'
 
     class Status(models.TextChoices):
         PENDING = 'PENDING'
@@ -212,3 +214,24 @@ class WorkspaceMessage(models.Model):
     class Meta:
         ordering = ['created_at', 'id']
         constraints = [models.UniqueConstraint(fields=['operation', 'role'], name='unique_workspace_op_message')]
+
+
+class WorkspaceUsage(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    operation = models.ForeignKey(WorkspaceOperation, on_delete=models.CASCADE, related_name='usage_reservations')
+    category = models.CharField(max_length=20)
+    reserved_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = [models.Index(fields=['user', 'category', 'reserved_at'], name='workspace_usage_window')]
+        constraints = [models.UniqueConstraint(fields=['operation', 'category'], name='workspace_usage_once')]
+
+
+class WorkspaceArtifact(models.Model):
+    document = models.ForeignKey(WorkspaceDocument, on_delete=models.CASCADE, related_name='artifacts')
+    operation = models.OneToOneField(WorkspaceOperation, on_delete=models.CASCADE, related_name='artifact')
+    revision = models.PositiveIntegerField()
+    name = models.CharField(max_length=180)
+    # Small, bounded immutable DOCX snapshots; no public storage URL or mutable regeneration on download.
+    data = models.BinaryField()
+    created_at = models.DateTimeField(auto_now_add=True)

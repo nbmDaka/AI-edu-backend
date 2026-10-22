@@ -10,13 +10,44 @@ from rest_framework.exceptions import ValidationError
 from apps.accounts.models import User
 from apps.education.access import can_access_item
 from apps.education.models import PracticeSubmission
-from apps.activities.models import WorkspaceDocument, WorkspaceMessage, WorkspaceOperation
+from apps.activities.models import WorkspaceDocument, WorkspaceMessage, WorkspaceOperation, WorkspaceArtifact
 from .ai import AIError, run_ai
 from .services import workspace_plugin
 
 MAX_ATTEMPTS = 3
 LEASE_GRACE_SECONDS = 30
 logger = logging.getLogger(__name__)
+
+
+def apply_chat_result(operation, document, response):
+    payload = response['payload']
+    action = payload['action']
+    if action in ('generate', 'edit'):
+        workspace_plugin(document.submission).validate_workspace_content(payload['content'])
+        document.content = payload['content']
+    if 'parameters' in payload:
+        document.parameters = payload['parameters']
+    document.conversation_state = payload['state']
+    document.revision += 1
+    document.save(update_fields=['content', 'parameters', 'conversation_state', 'revision', 'updated_at'])
+    operation.result = {'action': action, 'revision': document.revision, 'choices': payload.get('choices', [])}
+    if action in ('generate', 'edit'):
+        operation.result['content'] = document.content
+    if payload.get('docx'):
+        from .docx_export import filename, MAX_DOCX_BYTES
+        data = response['docx_data']
+        if not isinstance(data, bytes) or not 0 < len(data) <= MAX_DOCX_BYTES:
+            raise ValueError('invalid_docx')
+        artifact = WorkspaceArtifact.objects.create(document=document, operation=operation,
+            revision=document.revision, name=filename(document.content['title']), data=data)
+        operation.result['artifact'] = {'id': artifact.pk, 'name': artifact.name, 'size': len(data),
+            'url': f'/api/v1/workspace/artifacts/{artifact.pk}/download/', 'revision': artifact.revision}
+    language = document.parameters.get('language', 'ru')
+    if action in ('generate', 'edit', 'export'):
+        return {'ru': 'Лекция готова. Файл Word прикреплён к сообщению.' if payload.get('docx') else 'Лекция готова. Что сделаем дальше?',
+                'kk': 'Дәріс дайын. Word файлы хабарламаға тіркелді.' if payload.get('docx') else 'Дәріс дайын. Келесі қадам қандай?',
+                'en': 'Your lecture is ready. The Word file is attached.' if payload.get('docx') else 'Your lecture is ready. What would you like to do next?'}[language]
+    return payload['message']
 
 
 def locked_queue(queryset):
@@ -90,7 +121,10 @@ def finish_operation(claim, response=None, error_code='', duration_ms=0):
     if not error_code:
         try:
             payload = response['payload']
-            if operation.kind == 'generate':
+            if operation.kind == 'chat':
+                with transaction.atomic():
+                    text = apply_chat_result(operation, document, response)
+            elif operation.kind == 'generate':
                 workspace_plugin(submission).validate_workspace_content(payload)
                 document.content = payload
                 document.revision += 1
@@ -107,6 +141,7 @@ def finish_operation(claim, response=None, error_code='', duration_ms=0):
             WorkspaceMessage.objects.create(document=document, operation=operation, role='assistant', text=text)
         except (ValidationError, KeyError, TypeError, ValueError, RecursionError):
             error_code = 'ai_invalid_content'
+            operation.result = {}
     operation.error_code = error_code
     operation.status = 'FAILED' if error_code else 'SUCCEEDED'
     operation.finished_at = now
@@ -124,12 +159,21 @@ def execute_operation(operation):
             'owner', 'submission__item__module__course__learning_track').get(pk=operation.document_id)
         error_code = context_error(operation, document, document.submission, document.owner)
         if not error_code:
-            response = run_ai(operation)
+            if operation.kind == 'chat':
+                from .conversation import execute_chat
+                response = execute_chat(operation, document, workspace_plugin(document.submission))
+                if response['payload'].get('docx'):
+                    from .docx_export import render_docx
+                    response['docx_data'] = render_docx(response['payload'].get('content', document.content))
+            else:
+                response = run_ai(operation)
     except AIError as error:
         error_code = error.code
         logger.warning('Workspace operation %s: %s diagnostics=%s',
                        operation.pk, error.code, json.dumps(error.diagnostics, sort_keys=True))
-    except Exception:
-        # Unexpected exceptions must not persist arbitrary secret-bearing text.
-        error_code = 'worker_error'
+    except ValidationError:
+        error_code = 'ai_invalid_content'
+    except Exception as error:
+        from .limits import WorkspaceLimit
+        error_code = 'workspace_limit' if isinstance(error, WorkspaceLimit) else 'worker_error'
     return finish_operation(operation, response, error_code, int((time.monotonic() - started) * 1000))

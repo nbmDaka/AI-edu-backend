@@ -29,22 +29,30 @@ class OperationCreate(StrictSerializer):
 class DocumentOutput(serializers.ModelSerializer):
     class Meta:
         model = WorkspaceDocument
-        fields = ['id', 'submission', 'document_type', 'schema_version', 'parameters', 'content',
+        fields = ['id', 'submission', 'document_type', 'schema_version', 'parameters', 'content', 'conversation_state',
                   'revision', 'created_at', 'updated_at']
         read_only_fields = fields
 
 
 class MessageOutput(serializers.ModelSerializer):
     content = serializers.SerializerMethodField()
+    choices = serializers.SerializerMethodField()
+    artifact = serializers.SerializerMethodField()
+
+    def get_choices(self, message) -> list[str]:
+        return message.operation.result.get('choices', []) if message.role == 'assistant' else []
+
+    def get_artifact(self, message) -> dict | None:
+        return message.operation.result.get('artifact') if message.role == 'assistant' else None
 
     def get_content(self, message) -> dict | None:
-        if message.role == 'assistant' and message.operation.kind == 'generate':
+        if message.role == 'assistant' and message.operation.kind in ('generate', 'chat'):
             return message.operation.result.get('content')
         return None
 
     class Meta:
         model = WorkspaceMessage
-        fields = ['id', 'operation', 'role', 'text', 'content', 'created_at']
+        fields = ['id', 'operation', 'role', 'text', 'content', 'choices', 'artifact', 'created_at']
         read_only_fields = fields
 
 

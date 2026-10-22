@@ -1,8 +1,11 @@
 from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import generics
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
-from apps.activities.models import WorkspaceDocument, WorkspaceOperation
+from django.http import HttpResponse
+from django.utils.http import content_disposition_header
+from apps.activities.models import WorkspaceDocument, WorkspaceOperation, WorkspaceArtifact
 from apps.activities.views import practice_item
 from .serializers import (DocumentCreate, DocumentUpdate, DocumentOutput, MessageOutput,
                           OperationCreate, OperationOutput)
@@ -75,3 +78,20 @@ class WorkspaceOperationView(generics.GenericAPIView):
             raise NotFound()
         owned_document(request, operation.document_id)
         return Response(self.get_serializer(operation).data)
+
+
+class WorkspaceArtifactView(generics.GenericAPIView):
+    serializer_class = DocumentOutput
+
+    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'): OpenApiTypes.BINARY})
+    def get(self, request, pk):
+        artifact = WorkspaceArtifact.objects.filter(pk=pk, document__owner=request.user).first()
+        if artifact is None:
+            raise NotFound()
+        owned_document(request, artifact.document_id)
+        from .docx_export import DOCX_MIME
+        response = HttpResponse(bytes(artifact.data), content_type=DOCX_MIME)
+        response['Content-Disposition'] = content_disposition_header(True, artifact.name)
+        response['Cache-Control'] = 'private, no-store'
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response

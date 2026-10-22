@@ -63,11 +63,12 @@ def token_count(value):
     return value if type(value) is int and 0 <= value <= 2_147_483_647 else None
 
 
-def call_api(base_url, api_key, model, messages, timeout):
+def call_api(base_url, api_key, model, messages, timeout, max_completion_tokens=16000):
     url = urlsplit(base_url)
     if url.scheme not in ('https', 'http') or not url.netloc or url.username or url.password or url.query or url.fragment or not model:
         raise AIError('ai_not_configured')
-    body = json.dumps({'model': model, 'messages': messages, 'response_format': {'type': 'json_object'}}).encode('utf-8')
+    body = json.dumps({'model': model, 'messages': messages, 'response_format': {'type': 'json_object'},
+                       'max_completion_tokens': max_completion_tokens}).encode('utf-8')
     headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
     if api_key:
         headers['Authorization'] = 'Bearer ' + api_key
@@ -126,7 +127,8 @@ def run_ai(operation):
     from django.conf import settings
     data = {'base_url': settings.AI_BASE_URL, 'api_key': settings.AI_API_KEY,
             'model': operation.model, 'messages': operation.input_data['messages'],
-            'timeout': operation.timeout_seconds}
+            'timeout': operation.timeout_seconds,
+            'max_completion_tokens': operation.input_data.get('max_completion_tokens', 16000)}
     try:
         result = subprocess.run([sys.executable, '-X', 'utf8', '-m', 'apps.activities.workspace.ai'],
             input=json.dumps(data), text=True, encoding='utf-8', capture_output=True,

@@ -53,6 +53,7 @@ urlpatterns = [
     path('api/v1/workspace/documents/<int:pk>/messages/', workspace.WorkspaceMessagesView.as_view()),
     path('api/v1/workspace/documents/<int:pk>/operations/', workspace.WorkspaceOperationsView.as_view()),
     path('api/v1/workspace/operations/<int:pk>/', workspace.WorkspaceOperationView.as_view()),
+    path('api/v1/workspace/artifacts/<int:pk>/download/', workspace.WorkspaceArtifactView.as_view()),
     path('api/v1/lessons/', education.LessonList.as_view()),
     path('api/v1/lessons/<str:short_id>/', education.LessonDetail.as_view()),
     path('api/v1/lessons/<str:short_id>/blocks/', lessons.BlocksView.as_view()),
