@@ -51,8 +51,10 @@ class PracticeSourceFileTests(WorkspaceFixture, TestCase):
         publish_draft(self.item)
         response = self.client.get(source['url'])
         self.assertEqual(response.status_code, 200)
+        # Consuming the test client's streaming iterator closes the response
+        # with connection cleanup disconnected. Closing it again would close
+        # PostgreSQL's connection inside TestCase's transaction.
         self.assertEqual(b''.join(response.streaming_content), b'x' * 16)
-        response.close()
         self.other.learning_track = None
         self.other.save()
         self.client.force_login(self.other)

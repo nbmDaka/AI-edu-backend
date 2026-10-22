@@ -7,8 +7,11 @@ class PracticeUpgradeTests(TransactionTestCase):
     def test_upgrade_preserves_criteria_scores_progress_and_legacy_config(self):
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
+        # Keep lessons before instruction imports, which require education 0019.
+        # All historical targets must be compatible with the practice rollback.
         before = [('education', '0013_adaptive_learning') if app == 'education' else
-                  ('activities', '0002_alter_practicedefinition_lesson') if app == 'activities' else (app, migration)
+                  ('activities', '0002_alter_practicedefinition_lesson') if app == 'activities' else
+                  ('lessons', '0003_lectureimportjob_lectureimportasset_and_more') if app == 'lessons' else (app, migration)
                   for app, migration in latest]
         try:
             executor.migrate(before)
