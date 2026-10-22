@@ -8,7 +8,7 @@ def validate_upload(upload):
     if not upload or not upload.size:
         raise ValidationError({'file': 'Выберите непустой файл PDF, DOCX или PPTX.'})
     if upload.size > settings.LECTURE_IMPORT_MAX_BYTES:
-        raise ValidationError({'file': 'Максимальный размер файла — 30 МБ.'})
+        raise ValidationError({'file': 'Максимальный размер файла — 10 МБ.'})
     suffix = Path(upload.name).suffix.lower()
     if suffix not in {'.pdf', '.docx', '.pptx'}:
         raise ValidationError({'file': 'Поддерживаются PDF, DOCX и PPTX. Сохраните старый DOC/PPT в новом формате.'})

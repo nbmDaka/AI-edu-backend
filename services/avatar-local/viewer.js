@@ -226,7 +226,7 @@ async function playAudio(file) {
   for (const id of ['jaw', 'smile', 'viseme']) document.getElementById(id).disabled = true;
   audioStatus.textContent = 'Подготовка записи...';
   try {
-    if (file?.size > 25 * 1024 * 1024) throw new Error('Файл больше 25 МБ');
+    if (file?.size > 10 * 1024 * 1024) throw new Error('Файл больше 10 МБ');
     request = new AbortController();
     const signal = request.signal;
     audioContext ||= new AudioContext();

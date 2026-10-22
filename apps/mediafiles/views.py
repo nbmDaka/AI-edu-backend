@@ -11,7 +11,8 @@ from rest_framework.parsers import MultiPartParser
 from django.core.files.base import ContentFile
 from common.permissions import IsPlatformAdmin, is_admin
 from .models import MediaFile
-from .usage import draft_media_ids
+from .uploads import ATTACHMENT_TYPES
+from .usage import draft_media_ids, practice_source_is_used
 
 class MediaUploadSerializer(serializers.Serializer):
     file = serializers.ImageField()
@@ -53,22 +54,14 @@ class AttachmentUploadView(GenericAPIView):
     serializer_class = AttachmentUploadSerializer
     permission_classes = [IsPlatformAdmin]
     parser_classes = [MultiPartParser]
-    allowed_types = {
-        '.pdf': 'application/pdf', '.doc': 'application/msword',
-        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.ppt': 'application/vnd.ms-powerpoint',
-        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        '.xls': 'application/vnd.ms-excel',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.txt': 'text/plain', '.csv': 'text/csv', '.zip': 'application/zip',
-    }
+    allowed_types = ATTACHMENT_TYPES
 
     def post(self, request):
         upload = request.FILES.get('file')
         if not upload or not upload.size:
             raise ValidationError({'file': 'Выберите непустой файл'})
-        if upload.size > 20 * 1024 * 1024:
-            raise ValidationError({'file': 'Максимальный размер файла — 20 МБ'})
+        if upload.size > settings.MAX_UPLOAD_BYTES:
+            raise ValidationError({'file': 'Максимальный размер файла — 10 МБ'})
         name = Path(upload.name.replace('\\', '/')).name[:255]
         extension = Path(name).suffix.lower()
         if extension not in self.allowed_types:
@@ -120,7 +113,9 @@ class MediaView(GenericAPIView):
             ).exists()
             if user_track_id else False
         )
-        if not (is_admin(request.user) or public_block or public_cover or public_attachment):
+        from .usage import can_download_practice_source
+        if not (is_admin(request.user) or public_block or public_cover or public_attachment
+                or can_download_practice_source(request.user, media.pk)):
             raise PermissionDenied()
         return media
 
@@ -140,7 +135,7 @@ class MediaView(GenericAPIView):
         from apps.education.models import LearningTrack, Course
         if (media.lecture_import_assets.exists() or LessonBlock.objects.filter(media=media).exists() or LessonAttachment.objects.filter(media=media).exists()
                 or LearningTrack.all_objects.filter(cover=media).exists() or Course.all_objects.filter(cover=media).exists()
-                or media.pk in draft_media_ids()):
+                or media.pk in draft_media_ids() or practice_source_is_used(media.pk)):
             raise ValidationError({'detail': 'Файл используется'})
         media.delete()
         return Response(status=204)

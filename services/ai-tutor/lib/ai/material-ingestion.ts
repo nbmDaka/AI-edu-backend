@@ -8,7 +8,7 @@ import { estimateTokens } from '@/lib/ai/request';
 
 export const INDEX_EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small';
 const LOCAL_STT_URL = process.env.LOCAL_STT_URL ?? 'http://127.0.0.1:8001/transcribe';
-const MATERIAL_MAX_BYTES = Number(process.env.AI_MATERIAL_MAX_BYTES ?? 50 * 1024 * 1024);
+const MATERIAL_MAX_BYTES = 10 * 1024 * 1024;
 const TARGET_CHUNK_CHARS = Number(process.env.AI_INGEST_CHUNK_TARGET_CHARS ?? 1200);
 const MAX_CHUNK_CHARS = Number(process.env.AI_INGEST_CHUNK_MAX_CHARS ?? 1700);
 const VIDEO_ALLOWED_TYPES = new Set([

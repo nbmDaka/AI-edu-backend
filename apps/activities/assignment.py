@@ -1,9 +1,13 @@
 """Source-based assignments with a learner report and explicit self-assessment."""
 import json
 from dataclasses import replace
+from pathlib import Path
 from urllib.parse import urlsplit
 
+from django.conf import settings
 from rest_framework.exceptions import ValidationError
+from apps.mediafiles.models import MediaFile
+from apps.mediafiles.uploads import ATTACHMENT_TYPES
 
 
 def make_assignment_plugin(checklist_class):
@@ -23,14 +27,33 @@ def make_assignment_plugin(checklist_class):
                                      'items': {'type': 'string', 'maxLength': 50000}},
                     'criteria': checklist_class.manifest['config_schema']['properties']['criteria'],
                     'source_url': {'type': 'string', 'maxLength': 2000},
+                    'source_files': {'type': 'array', 'maxItems': 20, 'items': {
+                        'type': 'object', 'required': ['media', 'name', 'size', 'url'],
+                        'properties': {'media': {'type': 'integer'}, 'name': {'type': 'string'},
+                                       'size': {'type': 'integer'}, 'url': {'type': 'string'}},
+                    }},
                 },
             },
         }
 
         def validate_config(self, config):
-            if not isinstance(config, dict) or set(config) - {'instructions', 'criteria', 'source_url'}:
+            if not isinstance(config, dict) or set(config) - {'instructions', 'criteria', 'source_url', 'source_files'}:
                 raise ValidationError({'config': 'Некорректные настройки задания'})
             super().validate_config({'criteria': config.get('criteria')})
+            files = config.get('source_files', [])
+            if not isinstance(files, list) or len(files) > 20:
+                raise ValidationError({'source_files': 'Можно добавить не более 20 файлов'})
+            seen = set()
+            for file in files:
+                if not isinstance(file, dict) or type(file.get('media')) is not int or file['media'] in seen:
+                    raise ValidationError({'source_files': 'Некорректный файл источника'})
+                seen.add(file['media'])
+                media = MediaFile.objects.filter(pk=file['media']).first()
+                if (not media or not 0 < media.size <= settings.MAX_UPLOAD_BYTES
+                        or Path(media.original_name).suffix.lower() not in ATTACHMENT_TYPES
+                        or file.get('name') != media.original_name or file.get('size') != media.size
+                        or file.get('url') != f'/api/v1/media/{media.pk}/download/'):
+                    raise ValidationError({'source_files': 'Выберите загруженный файл размером до 10 МБ'})
             instructions = config.get('instructions')
             if not isinstance(instructions, list) or not 1 <= len(instructions) <= 10:
                 raise ValidationError({'instructions': 'Добавьте инструкцию к заданию'})
