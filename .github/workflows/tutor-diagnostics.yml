@@ -46,7 +46,7 @@ jobs:
           print('TUTOR_CONFIG', json.dumps({name: bool(getattr(settings, name, os.environ.get(name, ''))) for name in names}))
           base = settings.AI_SERVICE_URL
           print('TUTOR_HOST', urlsplit(base).hostname)
-          print('WORKSPACE_PROVIDER', urlsplit(settings.AI_BASE_URL).hostname, settings.AI_MODEL)
+          print('WORKSPACE_PROVIDER', urlsplit(settings.AI_BASE_URL).hostname, urlsplit(settings.AI_BASE_URL).path, settings.AI_MODEL)
           if settings.AI_BASE_URL and settings.AI_MODEL:
               from apps.activities.workspace.ai import call_api, AIError
               try:
@@ -55,6 +55,24 @@ jobs:
                   print('WORKSPACE_PROVIDER_CHECK', result['payload'].get('ok') is True)
               except AIError as error:
                   print('WORKSPACE_PROVIDER_CHECK', error.code)
+              from apps.activities.workspace.ai import NoRedirect
+              for route, body in [('chat/completions', {'model': settings.AI_MODEL, 'messages': [{'role': 'user', 'content': 'Say OK.'}]}),
+                                  ('responses', {'model': settings.AI_MODEL, 'input': 'Say OK.', 'store': False})]:
+                  request = urllib.request.Request(settings.AI_BASE_URL.rstrip('/') + '/' + route, method='POST',
+                      headers={'Authorization': 'Bearer ' + settings.AI_API_KEY, 'Content-Type': 'application/json'}, data=json.dumps(body).encode())
+                  try:
+                      with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+                          print('PROVIDER_ROUTE', route, response.status)
+                  except urllib.error.HTTPError as error:
+                      with error:
+                          raw = error.read(20000)
+                      try:
+                          detail = json.loads(raw).get('error', {})
+                          print('PROVIDER_ROUTE_ERROR', route, error.code, detail.get('code'), detail.get('type'), detail.get('param'))
+                      except ValueError:
+                          print('PROVIDER_ROUTE_ERROR', route, error.code)
+                  except Exception as error:
+                      print('PROVIDER_ROUTE_ERROR', route, type(error).__name__)
           if base:
               try:
                   with urllib.request.urlopen(base.rstrip('/') + '/api/health', timeout=15) as response:
