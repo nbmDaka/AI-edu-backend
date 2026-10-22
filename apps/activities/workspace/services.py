@@ -116,14 +116,17 @@ def create_operation(user, document, data):
     messages[1:1] = history
     if data['kind'] == 'chat':
         from .conversation import router_messages
-        messages = router_messages(document, history, data['prompt'])
+        version = document.submission.practice_version
+        assignment = {'title': version.title, 'description': version.description,
+                      'instructions': version.config.get('instructions', []), 'criteria': version.config.get('criteria', [])}
+        messages = router_messages(document, history, data['prompt'], assignment)
     if document.content and data['kind'] == 'generate':
         import json
         messages.insert(-1, {'role': 'assistant', 'content': json.dumps(document.content, ensure_ascii=False)})
     operation = WorkspaceOperation.objects.create(document=document, request_id=data['request_id'],
         kind=data['kind'], base_revision=document.revision, model=settings.AI_MODEL,
         timeout_seconds=settings.AI_TIMEOUT_SECONDS,
-        input_data={'parameters': parameters, 'prompt': data['prompt'],
+        input_data={'parameters': parameters, 'prompt': data['prompt'], 'assignment': assignment if data['kind'] == 'chat' else {},
                     'messages': messages})
     if data['kind'] != 'chat':
         from .limits import reserve_usage
@@ -139,14 +142,16 @@ def prepare_submission(user, submission, data):
         return data  # Historical checklist client.
     completion = isinstance(data, dict) and data.get('completed') is True
     if completion:
-        if set(data) - {'completed', 'document_id', 'document_revision'}:
+        if set(data) - {'completed', 'checks', 'document_id', 'document_revision'}:
             raise ValidationError({'submission_data': 'Неизвестные поля завершения практики'})
-        if set(data) == {'completed'}:
+        if set(data) <= {'completed', 'checks'}:
             document = WorkspaceDocument.objects.select_for_update().filter(owner=user, submission=submission).first()
             if document is None:
                 return data
             data = {**data, 'document_id': document.pk, 'document_revision': document.revision}
     expected = {'completed' if completion else 'checks', 'document_id', 'document_revision'}
+    if completion and 'checks' in data:
+        expected.add('checks')
     if (not isinstance(data, dict) or set(data) != expected or
             type(data['document_id']) is not int or type(data['document_revision']) is not int):
         raise ValidationError({'submission_data': 'Укажите завершение работы, document_id и document_revision'})

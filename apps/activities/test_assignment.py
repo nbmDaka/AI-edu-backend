@@ -72,8 +72,9 @@ class GuidedAssignmentTests(TestCase):
         submission = self.publish()
         response = self.client.post(self.path, {'submission_id': submission,
             'submission_data': {**self.answer, 'checks': [False]}}, format='json')
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data['is_completed'])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.get(self.path).data['submission']['status'], 'IN_PROGRESS')
+        self.assertFalse(self.client.get(self.path).data['is_completed'])
 
     def test_report_is_private_to_its_learner(self):
         submission = self.publish()

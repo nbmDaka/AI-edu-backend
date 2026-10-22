@@ -97,6 +97,8 @@ def make_assignment_plugin(checklist_class):
                 if parsed.scheme != 'https' or parsed.username or parsed.password:
                     raise ValidationError({'artifact_url': 'Используйте HTTPS-ссылку без логина и пароля'})
             result = super().evaluate(version, {'checks': data['checks']})
+            if not result.completed:
+                raise ValidationError({'checks': 'Подтвердите все обязательные критерии самопроверки'})
             return replace(result, data=data)
 
     return GuidedAssignmentPlugin()

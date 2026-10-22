@@ -103,6 +103,9 @@ registry.register(make_assignment_plugin(ChecklistPlugin))
 # Keep pinned historical assignments usable with the same chat runtime.
 class LegacyPracticePlugin(type(lecture_plugin)):
     manifest = {**lecture_plugin.manifest, 'type': 'checklist_practice', 'available': False}
-    validate_config = ChecklistPlugin.validate_config
+    def validate_config(self, config):
+        if config == {}:
+            return ChecklistPlugin.validate_config(self, config)
+        return super().validate_config(config)
 
 registry.register(LegacyPracticePlugin())

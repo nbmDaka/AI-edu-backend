@@ -4,6 +4,8 @@ from .schemas import SECTION_IDS, validate_lecture, validate_parameters
 
 
 def make_lecture_plugin(checklist_class):
+    from ..assignment import make_assignment_plugin
+    assignment_plugin = make_assignment_plugin(checklist_class)
     class LectureWorkshopPlugin(checklist_class):
         workspace_type = 'lecture'
         workspace_schema_version = 1
@@ -11,18 +13,19 @@ def make_lecture_plugin(checklist_class):
             **checklist_class.manifest,
             'type': 'lecture_workshop', 'version': '1.0.0',
             'name': 'Виртуальная мастерская генерации лекции',
-            'description': 'Чат для генерации учебной лекции по вашему запросу',
+            'description': 'Подготовка лекции по инструкции задания с последующей самопроверкой',
             'icon': 'sparkles', 'frontend_editor': 'lecture_workshop', 'student_runtime': 'lecture_workshop',
-            'grading': 'completion',
-            'capabilities': ['completion', 'workspace', 'ai_generation', 'chat'],
-            'config_schema': {'type': 'object', 'additionalProperties': False, 'properties': {}},
+            'grading': 'self_assessment',
+            'capabilities': ['instructions', 'criteria', 'self_assessment', 'workspace', 'ai_generation', 'chat'],
+            'config_schema': assignment_plugin.manifest['config_schema'],
         }
 
         def validate_config(self, config):
             if config == {}:
                 return
-            # Existing published versions remain readable without rewriting history.
-            super().validate_config(config)
+            if isinstance(config, dict) and set(config) == {'criteria'}:
+                return super().validate_config(config)  # Historical published versions.
+            assignment_plugin.validate_config(config)
 
         def materialize_config(self, version):
             if version.config:
@@ -62,6 +65,16 @@ def make_lecture_plugin(checklist_class):
             from apps.activities.registry import Evaluation
             if not isinstance(data, dict):
                 raise ValidationError({'submission_data': 'Отметьте практическую работу как выполненную'})
+            if 'instructions' in version.config:
+                from dataclasses import replace
+                expected = {'completed', 'checks', 'document_id', 'document_revision', 'document'}
+                if set(data) != expected or data.get('completed') is not True:
+                    raise ValidationError({'submission_data': 'Перейдите к самопроверке и подтвердите критерии задания'})
+                self.validate_workspace_content(data['document']['content'])
+                result = super().evaluate(version, {'checks': data['checks']})
+                if not result.completed:
+                    raise ValidationError({'checks': 'Подтвердите все обязательные критерии самопроверки'})
+                return replace(result, data=data)
             # Compatibility for already-open clients during rollout.
             if 'checks' in data:
                 from dataclasses import replace
@@ -70,6 +83,11 @@ def make_lecture_plugin(checklist_class):
                 if set(data) == {'checks', 'document_id', 'document_revision', 'document'}:
                     self.validate_workspace_content(data['document']['content'])
                     return replace(super().evaluate(version, {'checks': data['checks']}), data=data)
+                if data.get('completed') is True and set(data) <= {'completed', 'checks', 'document_id', 'document_revision', 'document'}:
+                    result = super().evaluate(version, {'checks': data['checks']})
+                    if not result.completed:
+                        raise ValidationError({'checks': 'Подтвердите все обязательные критерии самопроверки'})
+                    return replace(result, data=data)
             if data.get('completed') is not True or set(data) - {'completed', 'document_id', 'document_revision', 'document'}:
                 raise ValidationError({'submission_data': 'Отметьте практическую работу как выполненную'})
             return Evaluation(1.0, 'COMPLETION', True, [], data)

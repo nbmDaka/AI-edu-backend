@@ -27,6 +27,8 @@ class Plan(serializers.Serializer):
 ROUTER_PROMPT = '''You are a lecture preparation assistant. Return only JSON with:
 {"action":"clarify|generate|edit|export|unsupported","message":"...","choices":["..."],
 "requirements":{"topic":"...","audience":"...","duration_minutes":45,"language":"ru|kk|en"},"docx":false}.
+Use the assignment title, description, instructions and criteria as content requirements. Do not ask
+for details already provided in the assignment. The assignment criteria describe the expected result.
 Only capabilities: prepare a COMPLETE educational lecture, revise its sections, add examples or questions,
 shorten a lecture, and export the current lecture as DOCX. Never offer an outline-only mode, PPTX, PDF,
 XLSX, images, code execution, browsing, or other file types. Requests outside these capabilities are unsupported.
@@ -45,10 +47,10 @@ For export use docx=true. Do not include lecture text in this plan. Keep message
 '''
 
 
-def router_messages(document, history, prompt):
+def router_messages(document, history, prompt, assignment=None):
     context = {'state': document.conversation_state, 'default_language': document.parameters.get('language', 'ru'),
                'current_parameters': document.parameters if document.content else {},
-               'has_lecture': bool(document.content),
+               'has_lecture': bool(document.content), 'assignment': assignment or {},
                'lecture_title': document.content.get('title'),
                'sections': [{'id': s['id'], 'title': s['title']} for s in document.content.get('sections', [])]}
     return [{'role': 'system', 'content': ROUTER_PROMPT},
@@ -128,7 +130,8 @@ def execute_chat(operation, document, plugin):
     if action in ('generate', 'edit'):
         generate = copy(operation)
         messages = plugin.workspace_prompt('generate', parameters, operation.input_data['prompt'])
-        messages.insert(1, {'role': 'user', 'content': json.dumps({'requirements': requirements,
+        messages[0]['content'] += ' Follow the assignment instructions and self-check criteria when preparing the lecture.'
+        messages.insert(1, {'role': 'user', 'content': json.dumps({'requirements': requirements, 'assignment': operation.input_data.get('assignment', {}),
             'conversation': operation.input_data['messages'][2:-1]}, ensure_ascii=False)})
         if action == 'edit':
             messages.insert(-1, {'role': 'assistant', 'content': json.dumps(document.content, ensure_ascii=False)})
