@@ -31,6 +31,23 @@ docker compose exec backend python manage.py seed_demo
 
 API использует `/api/v1/`. OpenAPI схема доступна по `/api/v1/schema/`, Swagger UI — `/api/v1/docs/`. Изображения хранятся в приватном MinIO bucket и выдаются через авторизованный endpoint backend.
 
+## Быстрый запуск тестов
+
+```bash
+python -m pip install -r requirements.txt -r requirements-import-core.txt -r requirements-test.txt
+python manage.py test --settings=config.settings_test --parallel 2 --noinput --durations 15 --timing
+```
+
+Этот же запуск используется в CI: полный набор тестов выполняется в двух процессах,
+каждый со своей тестовой базой. PostgreSQL нужен для проверки блокировок worker;
+миграции и тесты обновления схемы выполняются полностью. `config.settings_test`
+использует быстрый хешер паролей только для тестов; рабочий `config.settings` не меняется.
+`tblib` сохраняет traceback ошибок из параллельных процессов. В конце прогона выводятся
+15 самых медленных тестов и время подготовки базы.
+
+При повторных локальных запусках можно добавить `--keepdb`, чтобы переиспользовать
+тестовые базы. Для последовательной отладки замените `--parallel 2` на `--parallel 1`.
+
 ## Переменные окружения
 
 `.env.example` включает настройки Django, PostgreSQL, MinIO и лимит загрузки. Секреты хранятся только в локальном `.env`, который игнорируется Git. В production задайте `DEBUG=false`, сильный `SECRET_KEY`, `ALLOWED_HOSTS` и `CSRF_TRUSTED_ORIGINS` для своего HTTPS-домена.

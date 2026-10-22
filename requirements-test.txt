@@ -1,0 +1,2 @@
+# Preserve tracebacks from Django's parallel test processes.
+tblib==3.2.2
