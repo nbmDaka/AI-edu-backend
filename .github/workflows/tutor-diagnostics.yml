@@ -1,0 +1,60 @@
+name: tutor-diagnostics
+
+on:
+  push:
+    branches: [fix/production-tutor-service]
+    paths: [.github/workflows/tutor-diagnostics.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Inspect tutor configuration without exposing secrets
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          eval "$(ssh-agent -s)"
+          trap 'ssh-agent -k' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | ssh-add -
+          {
+            printf 'cd %q\n' "$DEPLOY_PATH"
+            cat <<'REMOTE'
+          set -euo pipefail
+          docker ps --format '{{.Names}} {{.Status}}'
+          free -m
+          df -h .
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backend python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from urllib.parse import urlsplit
+          from django.conf import settings
+          os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+          names = ['AI_SERVICE_URL', 'AI_SERVICE_API_KEY', 'AI_API_KEY', 'OPENAI_API_KEY', 'AI_BASE_URL', 'AI_MODEL']
+          print('TUTOR_CONFIG', json.dumps({name: bool(getattr(settings, name, os.environ.get(name, ''))) for name in names}))
+          base = settings.AI_SERVICE_URL
+          print('TUTOR_HOST', urlsplit(base).hostname)
+          if base:
+              try:
+                  with urllib.request.urlopen(base.rstrip('/') + '/api/health', timeout=15) as response:
+                      data = json.load(response)
+                      print('TUTOR_HEALTH', response.status, data.get('status'), data.get('database', {}).get('status'))
+              except urllib.error.HTTPError as error:
+                  print('TUTOR_HEALTH_HTTP', error.code)
+              except Exception as error:
+                  print('TUTOR_HEALTH_ERROR', type(error).__name__)
+          PY
+          REMOTE
+          } | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s'
