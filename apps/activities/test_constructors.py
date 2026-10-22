@@ -102,6 +102,46 @@ class ConstructorTests(WorkspaceFixture, TestCase):
         self.assertIn('Лекция о педагогике', prompt)
         self.assertNotIn('Changed after the request', prompt)
 
+    def test_pasted_lecture_is_used_directly_and_prevents_source_offer_during_clarification(self):
+        document = self.constructor_document(CONSTRUCTORS[0])
+        text = 'Составь практику по лекции: Формирующее оценивание выявляет пробелы. Обратная связь направляет обучение.'
+        operation, provider = self.run_chat(document, [plan('clarify', message='На сколько минут?',
+            has_lecture_text=True, offer_source_lecture=True)], prompt=text)
+        self.assertFalse(operation.result.get('offer_source_lecture'))
+        self.assertTrue(document.conversation_state['has_lecture_text'])
+        system = provider.call_args.args[0].input_data['messages'][0]['content']
+        self.assertIn('Inspect the user request and conversation semantically', system)
+        self.assertIn('NEVER ask to select, save', system)
+        # The detected inline source survives subsequent clarification, even if omitted or reset by the model.
+        operation, _ = self.run_chat(document, [plan('clarify', message='Для какой аудитории?',
+            has_lecture_text=False, offer_source_lecture=True)])
+        self.assertFalse(operation.result.get('offer_source_lecture'))
+        _, provider = self.run_chat(document, [plan(), ai_response(content_for(CONSTRUCTORS[0]))])
+        self.assertIn(text, json.dumps(provider.call_args_list[1].args[0].input_data['messages'], ensure_ascii=False))
+        output = self.client.get(f'/api/v1/workspace/documents/{document.pk}/messages/').data['results']
+        self.assertFalse(any(message['offer_source_lecture'] for message in output))
+
+    def test_source_offer_is_saved_only_for_missing_lecture_clarification(self):
+        document = self.constructor_document(CONSTRUCTORS[0])
+        operation, _ = self.run_chat(document, [plan('clarify', message='Вставьте текст, выберите лекцию или продолжите по теме.',
+            has_lecture_text=False, offer_source_lecture=True)])
+        self.assertTrue(operation.result['offer_source_lecture'])
+        output = self.client.get(f'/api/v1/workspace/documents/{document.pk}/messages/').data['results']
+        self.assertTrue(output[-1]['offer_source_lecture'])
+        self.assertFalse(output[-2]['offer_source_lecture'])
+        # A user may continue with the topic alone, without selecting or saving a lecture.
+        operation, _ = self.run_chat(document, [plan(offer_source_lecture=True), ai_response(content_for(CONSTRUCTORS[0]))],
+                                     prompt='Продолжи только по теме, без лекции')
+        self.assertFalse(operation.result.get('offer_source_lecture'))
+
+    def test_saved_lecture_does_not_trigger_a_second_source_offer(self):
+        self.document.content = lecture()
+        self.document.save()
+        document = self.constructor_document(CONSTRUCTORS[0])
+        operation, _ = self.run_chat(document, [plan('clarify', message='Для какой аудитории?', offer_source_lecture=True)],
+                                     source_lecture_id=self.document.pk)
+        self.assertFalse(operation.result.get('offer_source_lecture'))
+
     def test_source_catalog_and_selection_are_private_and_access_checked(self):
         self.document.content = lecture()
         self.document.save()

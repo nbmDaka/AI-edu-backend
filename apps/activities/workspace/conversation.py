@@ -30,6 +30,8 @@ class Plan(serializers.Serializer):
     choices = serializers.ListField(child=serializers.CharField(max_length=200), max_length=4, default=list)
     requirements = Requirements(default=dict)
     docx = serializers.BooleanField(required=False)
+    has_lecture_text = serializers.BooleanField(required=False)
+    offer_source_lecture = serializers.BooleanField(default=False)
 
 
 ROUTER_PROMPT = '''You prepare teaching documents within the workspace scope below. Return only JSON with:
@@ -68,6 +70,20 @@ def router_messages(document, history, prompt, assignment=None, source_lecture=N
                    'for a practical session, not the requested output. Retain requirements across follow-up requests.')
     else:
         system += ' This workspace exclusively creates complete educational lectures, never outline-only responses.'
+    if document.document_type == 'practical_session':
+        system += (
+            ' Inspect the user request and conversation semantically for actual lecture text, including excerpts, '
+            'in any language. A topic/title or a request to use a lecture is not lecture text. '
+            'Return has_lecture_text=true when lecture text was supplied in this or an earlier turn; retain '
+            'state.has_lecture_text across clarification. Use that text directly and NEVER ask to select, save, '
+            'or paste a lecture again, and return offer_source_lecture=false. '
+            'Only when no lecture text and no source_lecture were supplied, you may offer a saved lecture: '
+            'use action=clarify, offer_source_lecture=true, and briefly offer pasting text, selecting a saved '
+            'lecture, or continuing with the topic alone. Do not require saving or selecting a lecture. '
+            'If the user chooses the topic alone or requests immediate generation, proceed without a source '
+            'and set offer_source_lecture=false. Do not repeat an offer already declined. '
+            'For unrelated clarification, existing content, or a supplied source set offer_source_lecture=false.'
+        )
     context = {'state': document.conversation_state, 'default_language': document.parameters.get('language', 'ru'),
                'current_parameters': document.parameters if document.content else {},
                'document_type': document.document_type, 'has_document': bool(document.content),
@@ -145,6 +161,10 @@ def execute_chat(operation, document, plugin):
     state = {'requirements': requirements, 'questions': questions + 1 if action == 'clarify' else 0,
              'docx': wants_docx}
     payload = {'action': action, 'message': plan['message'], 'choices': plan['choices'], 'state': state}
+    if document.document_type == 'practical_session':
+        state['has_lecture_text'] = bool(plan.get('has_lecture_text') or document.conversation_state.get('has_lecture_text'))
+        payload['offer_source_lecture'] = bool(action == 'clarify' and plan['offer_source_lecture']
+            and not state['has_lecture_text'] and not operation.input_data.get('source_lecture') and not document.content)
     if action == 'clarify':
         if not plan['message']:
             raise AIError('ai_invalid_response')
@@ -167,7 +187,7 @@ def execute_chat(operation, document, plugin):
         messages = plugin.workspace_prompt('generate', parameters, operation.input_data['prompt'])
         messages[0]['content'] += ' Follow the assignment instructions and self-check criteria when preparing the document.'
         messages.insert(1, {'role': 'user', 'content': json.dumps({'requirements': requirements, 'assignment': operation.input_data.get('assignment', {}),
-            'source_lecture': operation.input_data.get('source_lecture'),
+            'source_lecture': None if state.get('has_lecture_text') else operation.input_data.get('source_lecture'),
             'conversation': operation.input_data['messages'][2:-1]}, ensure_ascii=False)})
         if action == 'edit':
             messages.insert(-1, {'role': 'assistant', 'content': json.dumps(document.content, ensure_ascii=False)})

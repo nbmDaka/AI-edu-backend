@@ -29,6 +29,8 @@ def apply_chat_result(operation, document, response):
     document.revision += 1
     document.save(update_fields=['content', 'parameters', 'conversation_state', 'revision', 'updated_at'])
     operation.result = {'action': action, 'revision': document.revision, 'choices': payload.get('choices', [])}
+    if payload.get('offer_source_lecture'):
+        operation.result['offer_source_lecture'] = True
     if action in ('generate', 'edit'):
         operation.result['content'] = document.content
     if payload.get('docx'):

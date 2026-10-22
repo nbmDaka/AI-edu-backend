@@ -66,7 +66,9 @@ CONSTRUCTORS = (
         'Практические задания, кейсы и оценивание на трёх уровнях сложности',
         ('goal', 'objectives', 'learning_outcomes', 'basic_tasks', 'intermediate_tasks', 'advanced_tasks',
          'cases', 'problem_questions', 'execution_stages', 'assessment_criteria'),
-        'Prepare a practical session from a topic or the supplied source lecture. Infer its topic and '
+        'Prepare a practical session from a topic, lecture text pasted in the request/conversation, or the supplied '
+        'source lecture. Prefer lecture text explicitly provided by the user; use it directly without requiring '
+        'saving or selecting a lecture. Infer its topic and '
         'learning outcomes from that lecture when present. Include goal, objectives, expected results, '
         'concrete practical tasks at ALL THREE levels (basic, intermediate, advanced), realistic cases, '
         'problem questions, execution stages with timing and deliverables, and measurable assessment '

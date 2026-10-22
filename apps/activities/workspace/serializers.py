@@ -47,6 +47,10 @@ class MessageOutput(serializers.ModelSerializer):
     content = serializers.SerializerMethodField()
     choices = serializers.SerializerMethodField()
     artifact = serializers.SerializerMethodField()
+    offer_source_lecture = serializers.SerializerMethodField()
+
+    def get_offer_source_lecture(self, message) -> bool:
+        return message.role == 'assistant' and message.operation.result.get('offer_source_lecture', False)
 
     def get_choices(self, message) -> list[str]:
         return message.operation.result.get('choices', []) if message.role == 'assistant' else []
@@ -61,7 +65,7 @@ class MessageOutput(serializers.ModelSerializer):
 
     class Meta:
         model = WorkspaceMessage
-        fields = ['id', 'operation', 'role', 'text', 'content', 'choices', 'artifact', 'created_at']
+        fields = ['id', 'operation', 'role', 'text', 'content', 'choices', 'artifact', 'offer_source_lecture', 'created_at']
         read_only_fields = fields
 
 
