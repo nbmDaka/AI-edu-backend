@@ -24,6 +24,15 @@ class OperationCreate(StrictSerializer):
     revision = serializers.IntegerField(min_value=1)
     kind = serializers.ChoiceField(choices=WorkspaceOperation.Kind.choices)
     prompt = serializers.CharField(max_length=8000)
+    source_lecture_id = serializers.IntegerField(min_value=1, required=False)
+
+
+class SourceLectureOutput(serializers.ModelSerializer):
+    title = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = WorkspaceDocument
+        fields = ['id', 'title', 'updated_at']
 
 
 class DocumentOutput(serializers.ModelSerializer):

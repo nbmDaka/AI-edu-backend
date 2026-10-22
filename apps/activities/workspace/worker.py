@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.db import connection, transaction
 from django.db.models import F
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from apps.accounts.models import User
 from apps.education.access import can_access_item
 from apps.education.models import PracticeSubmission
@@ -42,6 +42,10 @@ def apply_chat_result(operation, document, response):
             'url': f'/api/v1/workspace/artifacts/{artifact.pk}/download/', 'revision': artifact.revision}
     language = document.parameters.get('language', 'ru')
     if action in ('generate', 'edit', 'export'):
+        if document.document_type != 'lecture':
+            return {'ru': 'Материал готов. Файл Word прикреплён к сообщению.' if payload.get('docx') else 'Материал готов. Что сделаем дальше?',
+                    'kk': 'Материал дайын. Word файлы хабарламаға тіркелді.' if payload.get('docx') else 'Материал дайын. Келесі қадам қандай?',
+                    'en': 'Your material is ready. The Word file is attached.' if payload.get('docx') else 'Your material is ready. What would you like to do next?'}[language]
         return {'ru': 'Лекция готова. Файл Word прикреплён к сообщению.' if payload.get('docx') else 'Лекция готова. Что сделаем дальше?',
                 'kk': 'Дәріс дайын. Word файлы хабарламаға тіркелді.' if payload.get('docx') else 'Дәріс дайын. Келесі қадам қандай?',
                 'en': 'Your lecture is ready. The Word file is attached.' if payload.get('docx') else 'Your lecture is ready. What would you like to do next?'}[language]
@@ -96,6 +100,13 @@ def context_error(operation, document, submission, user):
         return 'submission_closed'
     if document.revision != operation.base_revision:
         return 'revision_conflict'
+    source = operation.input_data.get('source_lecture')
+    if source:
+        from .services import source_lecture
+        try:
+            source_lecture(user, source['id'])
+        except (NotFound, ValidationError):
+            return 'access_revoked'
     return ''
 
 
@@ -138,7 +149,7 @@ def finish_operation(claim, response=None, error_code='', duration_ms=0, diagnos
                 document.revision += 1
                 document.save(update_fields=['content', 'revision', 'updated_at'])
                 operation.result = {'content': payload, 'revision': document.revision}
-                text = f"Лекция «{payload['title']}» создана."
+                text = f"Материал «{payload['title']}» создан."
             else:
                 if (not isinstance(payload, dict) or set(payload) != {'improved_prompt'} or
                         not isinstance(payload['improved_prompt'], str) or not payload['improved_prompt'].strip() or
@@ -178,7 +189,8 @@ def execute_operation(operation):
                 if response['payload'].get('docx'):
                     from .docx_export import render_docx
                     mark_stage(operation, 'docx')
-                    response['docx_data'] = render_docx(response['payload'].get('content', document.content))
+                    response['docx_data'] = render_docx(response['payload'].get('content', document.content),
+                                                       workspace_plugin(document.submission).section_ids)
             else:
                 mark_stage(operation, 'generate' if operation.kind == 'generate' else 'improve_prompt', operation.timeout_seconds)
                 response = run_ai(operation)

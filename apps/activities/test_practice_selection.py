@@ -48,7 +48,7 @@ class PracticeSelectionTests(TestCase):
         return response.data
 
     def test_switching_between_three_available_practices_keeps_the_same_learning_item(self):
-        self.assertEqual(len(self.admin.get('/api/v1/practice-types/').data), 4)
+        self.assertEqual(len(self.admin.get('/api/v1/practice-types/').data), 7)
         versions = []
         for kind in ('lecture_workshop', 'second_workshop', 'third_workshop', 'lecture_workshop'):
             draft = self.save(kind)

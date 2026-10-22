@@ -97,6 +97,11 @@ from .workspace.lecture import make_lecture_plugin
 lecture_plugin = make_lecture_plugin(ChecklistPlugin)
 registry.register(lecture_plugin)
 
+from .workspace.constructors import CONSTRUCTORS
+from .workspace.plugin import make_workspace_plugin
+for constructor in CONSTRUCTORS:
+    registry.register(make_workspace_plugin(ChecklistPlugin, constructor))
+
 from .assignment import make_assignment_plugin
 registry.register(make_assignment_plugin(ChecklistPlugin))
 

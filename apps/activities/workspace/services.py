@@ -29,6 +29,17 @@ def workspace_plugin(submission):
     return plugin
 
 
+def source_lecture(user, pk):
+    from apps.education.access import can_access_item
+    from .schemas import validate_lecture
+    source = WorkspaceDocument.objects.select_related('submission__item__module__course__learning_track').filter(
+        pk=pk, owner=user, document_type='lecture').first()
+    if source is None or not can_access_item(user, source.submission.item):
+        raise NotFound('Исходная лекция недоступна')
+    validate_lecture(source.content)
+    return source
+
+
 def ensure_mutable(submission):
     if submission.status != 'IN_PROGRESS':
         raise Conflict('Попытка уже сдана. Начните новую попытку')
@@ -62,7 +73,7 @@ def create_document(user, item, parameters=None, language='ru'):
         raise ValidationError({'detail': 'Эта практика не поддерживает workspace'})
     if parameters is None:
         parameters = {'discipline': 'По запросу пользователя', 'topic': 'По запросу пользователя',
-                      'course': 'Учебная лекция', 'audience': 'Обучающиеся', 'duration_minutes': 45,
+                      'course': 'Учебный материал', 'audience': 'Обучающиеся', 'duration_minutes': 45,
                       'difficulty': 'intermediate', 'learning_outcomes': ['Изучить тему запроса'], 'language': language}
     parameters = plugin.validate_workspace_parameters(parameters)
     submission = start_submission(user, item)
@@ -98,7 +109,8 @@ def create_operation(user, document, data):
     existing = document.operations.filter(request_id=data['request_id']).first()
     if existing:
         if (existing.kind != data['kind'] or existing.base_revision != data['revision'] or
-                existing.input_data['prompt'] != data['prompt']):
+                existing.input_data['prompt'] != data['prompt'] or
+                existing.input_data.get('selected_source_id') != data.get('source_lecture_id')):
             raise Conflict('request_id уже использован с другим запросом')
         return existing
     if document.revision != data['revision']:
@@ -110,6 +122,18 @@ def create_operation(user, document, data):
     if not settings.AI_BASE_URL or not settings.AI_MODEL:
         raise AIUnavailable()
     parameters = plugin.validate_workspace_parameters(document.parameters)
+    source = None
+    if 'source_lecture_id' in data:
+        if document.document_type != 'practical_session':
+            raise ValidationError({'source_lecture_id': 'Лекция используется только в конструкторе практического занятия'})
+        selected = source_lecture(user, data['source_lecture_id'])
+        source = {'id': selected.pk, 'revision': selected.revision, 'content': deepcopy(selected.content)}
+    elif document.document_type == 'practical_session':
+        # A failed first generation must retain its source when retried with a new UUID.
+        previous = document.operations.order_by('-id').first()
+        source = previous.input_data.get('source_lecture') if previous else None
+        if source:
+            source_lecture(user, source['id'])  # Recheck access before reusing the snapshot.
     messages = plugin.workspace_prompt(data['kind'], parameters, data['prompt'])
     history = list(document.messages.filter(operation__status='SUCCEEDED').order_by('-id')[:12])
     history = [{'role': row.role, 'content': row.text} for row in reversed(history)]
@@ -119,7 +143,10 @@ def create_operation(user, document, data):
         version = document.submission.practice_version
         assignment = {'title': version.title, 'description': version.description,
                       'instructions': version.config.get('instructions', []), 'criteria': version.config.get('criteria', [])}
-        messages = router_messages(document, history, data['prompt'], assignment)
+        messages = router_messages(document, history, data['prompt'], assignment, source)
+    elif source:
+        import json
+        messages.insert(1, {'role': 'user', 'content': json.dumps({'source_lecture': source}, ensure_ascii=False)})
     if document.content and data['kind'] == 'generate':
         import json
         messages.insert(-1, {'role': 'assistant', 'content': json.dumps(document.content, ensure_ascii=False)})
@@ -127,6 +154,7 @@ def create_operation(user, document, data):
         kind=data['kind'], base_revision=document.revision, model=settings.AI_MODEL,
         timeout_seconds=settings.AI_TIMEOUT_SECONDS,
         input_data={'parameters': parameters, 'prompt': data['prompt'], 'assignment': assignment if data['kind'] == 'chat' else {},
+                    'source_lecture': source, 'selected_source_id': data.get('source_lecture_id'),
                     'messages': messages})
     if data['kind'] != 'chat':
         from .limits import reserve_usage

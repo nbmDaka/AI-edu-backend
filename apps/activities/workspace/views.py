@@ -4,12 +4,27 @@ from rest_framework import generics
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from django.http import HttpResponse
+from django.db.models.fields.json import KeyTextTransform
 from django.utils.http import content_disposition_header
 from apps.activities.models import WorkspaceDocument, WorkspaceOperation, WorkspaceArtifact
 from apps.activities.views import practice_item
 from .serializers import (DocumentCreate, DocumentUpdate, DocumentOutput, MessageOutput,
-                          OperationCreate, OperationOutput)
+                          OperationCreate, OperationOutput, SourceLectureOutput)
 from .services import create_document, update_document, create_operation
+
+
+class SourceLecturesView(generics.GenericAPIView):
+    serializer_class = SourceLectureOutput
+
+    @extend_schema(responses=SourceLectureOutput(many=True))
+    def get(self, request):
+        from apps.education.access import can_access_item
+        documents = WorkspaceDocument.objects.filter(owner=request.user, document_type='lecture').exclude(content={}).select_related(
+            'submission__item__module__course__learning_track').annotate(title=KeyTextTransform('title', 'content')).defer(
+            'content', 'parameters', 'conversation_state').order_by('-updated_at', '-id')
+        accessible = [document for document in documents if can_access_item(request.user, document.submission.item)]
+        page = self.paginate_queryset(accessible)
+        return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
 
 def owned_document(request, pk):

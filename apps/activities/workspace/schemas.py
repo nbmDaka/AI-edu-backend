@@ -101,21 +101,21 @@ def validate_tiptap(document):
     visit(document)
 
 
-def validate_lecture(value):
+def validate_document(value, section_ids=SECTION_IDS):
     if not isinstance(value, dict) or set(value) != {'title', 'sections'}:
-        raise ValidationError({'content': 'Ожидается лекция с title и sections'})
+        raise ValidationError({'content': 'Ожидается документ с title и sections'})
     if not isinstance(value['title'], str) or not value['title'].strip() or len(value['title']) > 300:
-        raise ValidationError({'content': 'Некорректное название лекции'})
+        raise ValidationError({'content': 'Некорректное название документа'})
     try:
         size = len(json.dumps(value, ensure_ascii=False).encode('utf-8'))
     except (TypeError, ValueError, RecursionError):
-        raise ValidationError({'content': 'Некорректный JSON лекции'}) from None
+        raise ValidationError({'content': 'Некорректный JSON документа'}) from None
     if size > MAX_CONTENT_BYTES:
-        raise ValidationError({'content': 'Лекция превышает допустимый размер'})
+        raise ValidationError({'content': 'Документ превышает допустимый размер'})
     sections = value['sections']
-    if not isinstance(sections, list) or len(sections) != len(SECTION_IDS):
-        raise ValidationError({'content': 'Лекция должна содержать все десять разделов'})
-    for section, section_id in zip(sections, SECTION_IDS):
+    if not isinstance(sections, list) or len(sections) != len(section_ids):
+        raise ValidationError({'content': 'Документ должен содержать все разделы выбранного конструктора'})
+    for section, section_id in zip(sections, section_ids):
         if (not isinstance(section, dict) or set(section) != {'id', 'title', 'content'} or section['id'] != section_id or
                 not isinstance(section['title'], str) or not section['title'].strip() or len(section['title']) > 200):
             raise ValidationError({'content': 'Некорректный раздел или стабильный ID'})
@@ -126,5 +126,9 @@ def validate_lecture(value):
         return sum(words(child) for child in node.get('content', []))
     count = len(value['title'].split()) + sum(len(section['title'].split()) + words(section['content']) for section in sections)
     if count > 3000:
-        raise ValidationError({'content': 'Лекция должна содержать не более 3000 слов'})
+        raise ValidationError({'content': 'Документ должен содержать не более 3000 слов'})
     return value
+
+
+def validate_lecture(value):
+    return validate_document(value, SECTION_IDS)

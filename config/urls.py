@@ -50,6 +50,7 @@ urlpatterns = [
     path('api/v1/items/<str:short_id>/practice/history/', activities.PracticeHistoryView.as_view()),
     path('api/v1/items/<str:short_id>/practice/workspace/', workspace.WorkspaceCreateView.as_view()),
     path('api/v1/workspace/documents/<int:pk>/', workspace.WorkspaceDocumentView.as_view()),
+    path('api/v1/workspace/source-lectures/', workspace.SourceLecturesView.as_view()),
     path('api/v1/workspace/documents/<int:pk>/messages/', workspace.WorkspaceMessagesView.as_view()),
     path('api/v1/workspace/documents/<int:pk>/operations/', workspace.WorkspaceOperationsView.as_view()),
     path('api/v1/workspace/operations/<int:pk>/', workspace.WorkspaceOperationView.as_view()),

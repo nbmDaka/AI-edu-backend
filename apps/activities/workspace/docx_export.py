@@ -5,7 +5,7 @@ from docx import Document
 from docx.shared import Cm, Pt, RGBColor
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from .schemas import validate_lecture
+from .schemas import SECTION_IDS, validate_document
 
 DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 MAX_DOCX_BYTES = 512_000
@@ -16,8 +16,8 @@ def filename(title):
     return (clean or 'Лекция') + '.docx'
 
 
-def render_docx(lecture):
-    validate_lecture(lecture)
+def render_docx(lecture, section_ids=SECTION_IDS):
+    validate_document(lecture, section_ids)
     document = Document()
     section = document.sections[0]
     section.page_width, section.page_height = Cm(21), Cm(29.7)
