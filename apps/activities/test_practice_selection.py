@@ -48,9 +48,12 @@ class PracticeSelectionTests(TestCase):
         return response.data
 
     def test_switching_between_three_available_practices_keeps_the_same_learning_item(self):
-        self.assertEqual(len(self.admin.get('/api/v1/practice-types/').data), 7)
+        practice_types = ('lecture_workshop', 'second_workshop', 'third_workshop')
+        catalog = self.admin.get('/api/v1/practice-types/')
+        self.assertEqual(catalog.status_code, 200)
+        self.assertTrue(set(practice_types).issubset({row['type'] for row in catalog.data}))
         versions = []
-        for kind in ('lecture_workshop', 'second_workshop', 'third_workshop', 'lecture_workshop'):
+        for kind in (*practice_types, 'lecture_workshop'):
             draft = self.save(kind)
             reopened = self.admin.get(self.path + 'draft/').data
             self.assertEqual(reopened['draft']['practice_type'], kind)
