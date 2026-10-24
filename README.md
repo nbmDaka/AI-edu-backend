@@ -17,6 +17,21 @@ docker compose up --build -d
 
 Compose поднимает PostgreSQL, Redis, MinIO и backend, запускает миграции и создаёт bucket. Backend API доступен в Docker-сети по `http://backend:8000` и локально на `http://localhost:8000`. MinIO Console доступна только локально на `http://localhost:9001`.
 
+Production-конфигурация публикует PostgreSQL на `0.0.0.0:5432`. Адрес привязки и внешний порт
+задаются через `POSTGRES_BIND_ADDRESS` и `POSTGRES_PUBLISHED_PORT` в серверном `.env`.
+Чтобы применить публикацию порта к существующему контейнеру, выполните из каталога backend:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --no-build --wait --wait-timeout 120 db
+docker compose -f docker-compose.yml -f docker-compose.prod.yml port db 5432
+```
+
+При изменении публикации порта Compose пересоздаёт контейнер БД с прежним томом данных;
+подключения кратковременно прерываются. Внешний клиент использует адрес сервера, опубликованный
+порт, `DATABASE_NAME`, `DATABASE_USER` и `DATABASE_PASSWORD` из серверного `.env`.
+Сетевой экран сервера и провайдера также должен разрешать входящий TCP на опубликованный порт
+с IP клиента. CI/CD применяет конфигурацию БД перед обновлением приложения.
+
 Создайте администратора платформы:
 
 ```bash

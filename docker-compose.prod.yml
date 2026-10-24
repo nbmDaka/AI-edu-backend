@@ -1,4 +1,7 @@
 services:
+  db:
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-0.0.0.0}:${POSTGRES_PUBLISHED_PORT:-5432}:5432"
   ai-tutor:
     image: ${AI_TUTOR_IMAGE:-ai-edu-ai-tutor}:${IMAGE_TAG:-latest}
     env_file: .env.ai-tutor
