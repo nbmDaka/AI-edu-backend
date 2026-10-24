@@ -2,6 +2,8 @@
 
 Backend виртуальной работы №1 `lecture_workshop@1.0.0`: [настройка AI API, локальный worker, API и схема документа](docs/workspace.md).
 
+Письма регистрации и восстановления пароля: [настройка Resend, подтверждение email и API](docs/account-email.md).
+
 Django REST API и инфраструктура платформы: PostgreSQL, Redis и MinIO. Frontend находится в отдельном репозитории и подключается к общей Docker-сети `aiedu-platform`.
 
 ## Запуск backend

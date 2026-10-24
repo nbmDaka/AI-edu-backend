@@ -70,7 +70,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
+    'DEFAULT_AUTHENTICATION_CLASSES': ['common.auth.VerifiedSessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
     'DEFAULT_PAGINATION_CLASS': 'common.pagination.StandardPagination', 'PAGE_SIZE': 30,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -117,6 +117,12 @@ AI_AVATAR_SERVICE_URL = os.getenv('AI_AVATAR_SERVICE_URL', '').rstrip('/') if DE
 AI_SERVICE_TIMEOUT = int(os.getenv('AI_SERVICE_TIMEOUT', '90'))
 AI_TUTOR_RATE = os.getenv('AI_TUTOR_RATE', '20/min')
 PUBLIC_SITE_URL = os.getenv('PUBLIC_SITE_URL', 'https://aiedu.com.kz').rstrip('/')
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'common.email.ResendEmailBackend')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'AI Edu <noreply@aiedu.com.kz>')
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10'))
+PASSWORD_RESET_TIMEOUT = int(os.getenv('PASSWORD_RESET_TIMEOUT', '3600'))
+EMAIL_VERIFICATION_TIMEOUT = int(os.getenv('EMAIL_VERIFICATION_TIMEOUT', '86400'))
 CERTIFICATE_FONT_PATH = os.getenv('CERTIFICATE_FONT_PATH', '')
 AI_BASE_URL = os.getenv('AI_BASE_URL', '').rstrip('/')
 AI_API_KEY = os.getenv('AI_API_KEY', '')

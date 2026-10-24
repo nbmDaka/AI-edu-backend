@@ -18,9 +18,6 @@ class Requirements(serializers.Serializer):
     discipline = serializers.CharField(max_length=200, required=False)
     difficulty = serializers.ChoiceField(choices=['beginner', 'intermediate', 'advanced'], required=False)
     learning_outcomes = serializers.ListField(child=serializers.CharField(max_length=500), min_length=1, max_length=30, required=False)
-    specialty = serializers.CharField(max_length=300, required=False)
-    credits = serializers.FloatField(min_value=0.5, max_value=60, required=False)
-    duration_weeks = serializers.IntegerField(min_value=1, max_value=104, required=False)
     session_type = serializers.ChoiceField(choices=SESSION_TYPES, required=False)
 
 
@@ -64,7 +61,7 @@ def router_messages(document, history, prompt, assignment=None, source_lecture=N
     if constructor:
         system += (' This workspace exclusively creates the following document: ' + constructor.instructions +
                    ' Extract additional requirements when provided: discipline, difficulty (beginner|intermediate|advanced), '
-                   'learning_outcomes (string array), specialty, credits (number), duration_weeks (integer), '
+                   'learning_outcomes (string array), '
                    'session_type (seminar|round_table|discussion|business_game|case_study|research|project|group). '
                    'Include these in requirements; omit unknown values. A supplied source lecture is reference material '
                    'for a practical session, not the requested output. Retain requirements across follow-up requests.')
@@ -138,7 +135,7 @@ def execute_chat(operation, document, plugin):
     requirements = {**state.get('requirements', {}), **plan['requirements']}
     if document.document_type == 'lecture':
         requirements = {key: value for key, value in requirements.items()
-                        if key not in ('specialty', 'credits', 'duration_weeks', 'session_type')}
+                        if key != 'session_type'}
     language = requirements.get('language', document.parameters.get('language', 'ru'))
     questions = state.get('questions', 0)
     if plan['action'] == 'clarify' and questions >= 3:

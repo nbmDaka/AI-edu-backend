@@ -97,9 +97,13 @@ class ProgramJourneyTests(TestCase):
         self.assertEqual(self.client.post(self.issue).status_code, 400)
 
     def test_registration_may_precede_track_choice(self):
+        from django.core import mail
         self.client.logout()
         response = self.client.post('/api/v1/auth/register/', {'email': 'newjourney@example.test', 'password': 'AnotherStrong321!', 'first_name': 'Алия'}, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertIsNone(response.data['learning_track'])
+        token = mail.outbox[-1].body.split('/#/verify-email/')[1].split()[0]
+        self.assertEqual(self.client.post('/api/v1/auth/verify-email/', {'token': token}, format='json').status_code, 200)
+        self.assertEqual(self.client.post('/api/v1/auth/login/', {'email': 'newjourney@example.test', 'password': 'AnotherStrong321!'}, format='json').status_code, 200)
         response = self.client.patch('/api/v1/auth/me/', {'learning_track': self.track.pk}, format='json')
         self.assertEqual(response.status_code, 200, response.data)

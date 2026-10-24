@@ -1,11 +1,11 @@
 # Виртуальная мастерская генерации лекции — backend
 
-## Конструкторы №2–4
+## Конструкторы №2–3
 
-В каталоге также зарегистрированы `practical_workshop`, `pedagogical_workshop`, `syllabus_workshop`
+В каталоге также зарегистрированы `practical_workshop`, `pedagogical_workshop`
 версии `1.0.0`. Они используют общий жизненный цикл `workspace/plugin.py`, чат, операции, лимиты,
 Word-экспорт и самопроверку. `workspace/constructors.py` содержит отдельные промпты и контракты:
-`practical_session`, `pedagogical_scenario`, `syllabus`. Лекция сохраняет свой прежний контракт.
+`practical_session`, `pedagogical_scenario`. Лекция сохраняет свой прежний контракт.
 Схема и порядок разделов проверяются по инструменту закреплённой версии практики.
 
 Конструктор практического занятия принимает тему или `source_lecture_id` в запросе операции.
@@ -20,9 +20,9 @@ Word-экспорт и самопроверку. `workspace/constructors.py` с�
 в проверку идемпотентности; worker повторно проверяет доступ перед выполнением и сохранением результата.
 
 Маршрутизатор сохраняет дополнительные параметры `session_type`, `discipline`, `difficulty`,
-`learning_outcomes`, `specialty`, `credits`, `duration_weeks`. В педагогическом конструкторе доступны
+`learning_outcomes`. В педагогическом конструкторе доступны
 восемь форматов: `seminar`, `round_table`, `discussion`, `business_game`, `case_study`, `research`,
-`project`, `group`. Силлабус использует длительность в неделях; минуты не подменяют длительность курса.
+`project`, `group`.
 Практическое занятие содержит задания всех трёх уровней сложности.
 
 Обновление требует перезапуска backend и workspace worker; новых миграций или AI-настроек нет.

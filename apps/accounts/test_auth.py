@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.core import mail
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -66,6 +67,9 @@ class AuthSessionTests(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         user = User.objects.get(pk=response.data['id'])
         self.assertTrue(user.check_password(password))
+        self.assertEqual(self.client.get('/api/v1/auth/me/').status_code, 403)
+        token = mail.outbox[-1].body.split('/#/verify-email/')[1].split()[0]
+        self.assertEqual(self.post('auth/verify-email/', {'token': token}).status_code, 200)
         self.assertEqual(self.post('auth/logout/').status_code, 204)
         self.assertEqual(self.post('auth/login/', {'email': user.email, 'password': password.strip()}).status_code, 400)
         self.assertEqual(self.post('auth/login/', {'email': user.email, 'password': password}).status_code, 200)

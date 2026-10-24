@@ -37,7 +37,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data, role='STUDENT')
+        return User.objects.create_user(**validated_data, role='STUDENT', email_verification_required=True)
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -69,3 +69,29 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 class PasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(trim_whitespace=False)
     new_password = serializers.CharField(trim_whitespace=False)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField(max_length=128)
+    token = serializers.CharField(max_length=128)
+    new_password = serializers.CharField(trim_whitespace=False, max_length=4096)
+
+
+class AuthMessageSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=1024)
+
+
+class RegistrationResponseSerializer(UserSerializer):
+    verification_required = serializers.BooleanField(read_only=True, default=True)
+    detail = serializers.CharField(read_only=True)
+
+    class Meta(UserSerializer.Meta):
+        fields = [*UserSerializer.Meta.fields, 'verification_required', 'detail']

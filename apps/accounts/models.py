@@ -24,6 +24,8 @@ class User(SoftDeleteModel, AbstractBaseUser, PermissionsMixin):
         TRACK_DEFAULT = 'TRACK_DEFAULT'
         CUSTOM = 'CUSTOM'
     email = models.EmailField(unique=True)
+    email_verification_required = models.BooleanField(default=False, editable=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.STUDENT)

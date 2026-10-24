@@ -45,7 +45,7 @@ class PracticeEngineTests(TestCase):
         response = self.client.get('/api/v1/practice-types/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual([row['type'] for row in response.data], [
-            'lecture_workshop', 'practical_workshop', 'pedagogical_workshop', 'syllabus_workshop', 'guided_assignment'])
+            'lecture_workshop', 'practical_workshop', 'pedagogical_workshop', 'guided_assignment'])
         self.assertEqual(response.data[0]['grading'], 'self_assessment')
         self.assertIn('criteria', response.data[0]['capabilities'])
         self.assertIn('config_schema', response.data[0])

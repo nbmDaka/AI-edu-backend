@@ -11,9 +11,6 @@ SESSION_TYPES = ('seminar', 'round_table', 'discussion', 'business_game', 'case_
 
 class ConstructorParameters(LectureParameters):
     session_type = serializers.ChoiceField(choices=SESSION_TYPES, required=False)
-    specialty = serializers.CharField(max_length=300, required=False)
-    credits = serializers.FloatField(min_value=0.5, max_value=60, required=False)
-    duration_weeks = serializers.IntegerField(min_value=1, max_value=104, required=False)
 
 
 def validate_constructor_parameters(value):
@@ -85,21 +82,6 @@ CONSTRUCTORS = (
         'facilitation rules, timed step-by-step scenario, concrete tasks/materials, discussion questions, '
         'assessment and reflection to that format, topic, audience and duration. Provide usable instructions '
         'for both facilitator and participants, rather than only a description of the format.'
-    ),
-    Constructor(
-        'syllabus_workshop', 'syllabus', 'Виртуальный конструктор силлабуса',
-        'Цели, тематический план, задания и оценивание учебной дисциплины',
-        ('course_information', 'goals', 'learning_outcomes', 'thematic_plan', 'lectures', 'practical_sessions',
-         'independent_assignments', 'teaching_methods', 'assessment', 'literature'),
-        'Design a complete syllabus. Establish discipline name, specialty, number of credits, duration '
-        'in weeks and intended learning outcomes. Ask concisely for missing inputs; do not treat '
-        'duration_minutes as the course duration. Include course information and workload assumptions, '
-        'goals, measurable learning outcomes, a week-by-week thematic plan, lecture topics, practical '
-        'sessions, independent assignments with deliverables, teaching methods, assessment weights '
-        'totalling 100 percent and criteria aligned with the outcomes, and literature. Align the plan '
-        'and workload with the supplied credits and duration. State the assumed hours-per-credit '
-        'convention, and do not claim compliance with an institution without its rules. Never invent '
-        'bibliographic facts, DOIs or URLs; mark uncertain reading suggestions for verification.'
     ),
 )
 

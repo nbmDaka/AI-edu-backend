@@ -63,20 +63,19 @@ class ConstructorTests(WorkspaceFixture, TestCase):
                         'document_id': document.pk, 'document_revision': document.revision}}, format='json')
                 self.assertEqual(response.status_code, 200, response.data)
 
-    def test_format_and_syllabus_inputs_survive_clarification_and_edits(self):
-        for spec, requirements in [(CONSTRUCTORS[1], {'session_type': 'business_game'}),
-                                   (CONSTRUCTORS[2], {'discipline': 'Педагогика', 'specialty': 'Педагог', 'credits': 5,
-                                                      'duration_weeks': 15, 'learning_outcomes': ['Проектировать занятия']})]:
-            document = self.constructor_document(spec)
-            self.run_chat(document, [plan('clarify', message='Какая аудитория?', requirements=requirements)])
-            self.run_chat(document, [plan(), ai_response(content_for(spec))])
-            for key, value in requirements.items():
-                self.assertEqual(document.parameters[key], value)
-            changed = {**content_for(spec), 'title': 'Обновлённый материал'}
-            _, provider = self.run_chat(document, [plan('edit'), ai_response(changed)])
-            self.assertEqual(document.content, changed)
-            messages = provider.call_args_list[1].args[0].input_data['messages']
-            self.assertIn(content_for(spec), [json.loads(m['content']) for m in messages if m['role'] == 'assistant'])
+    def test_format_inputs_survive_clarification_and_edits(self):
+        spec = CONSTRUCTORS[1]
+        requirements = {'session_type': 'business_game'}
+        document = self.constructor_document(spec)
+        self.run_chat(document, [plan('clarify', message='Какая аудитория?', requirements=requirements)])
+        self.run_chat(document, [plan(), ai_response(content_for(spec))])
+        for key, value in requirements.items():
+            self.assertEqual(document.parameters[key], value)
+        changed = {**content_for(spec), 'title': 'Обновлённый материал'}
+        _, provider = self.run_chat(document, [plan('edit'), ai_response(changed)])
+        self.assertEqual(document.content, changed)
+        messages = provider.call_args_list[1].args[0].input_data['messages']
+        self.assertIn(content_for(spec), [json.loads(m['content']) for m in messages if m['role'] == 'assistant'])
 
     def test_wrong_document_contract_and_invalid_parameters_are_rejected(self):
         for spec in CONSTRUCTORS:
@@ -84,9 +83,9 @@ class ConstructorTests(WorkspaceFixture, TestCase):
             with self.assertRaises(ValidationError):
                 plugin.validate_workspace_content(lecture())
             with self.assertRaises(ValidationError):
-                plugin.validate_workspace_parameters({**self.parameters, 'duration_weeks': 0})
+                plugin.validate_workspace_parameters({**self.parameters, 'duration_minutes': 0})
             with self.assertRaises(ValidationError):
-                plugin.validate_workspace_parameters({**self.parameters, 'credits': -1})
+                plugin.validate_workspace_parameters({**self.parameters, 'session_type': 'invalid'})
 
     def test_source_lecture_snapshot_is_used_for_generation_and_follow_up(self):
         self.document.content = lecture()
