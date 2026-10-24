@@ -1,5 +1,7 @@
 # AI Edu backend
 
+Админская аналитика обучения: [API, определения показателей и проверки](docs/analytics.md).
+
 Backend виртуальной работы №1 `lecture_workshop@1.0.0`: [настройка AI API, локальный worker, API и схема документа](docs/workspace.md).
 
 Письма регистрации и восстановления пароля: [настройка Resend, подтверждение email и API](docs/account-email.md).

@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from apps.education.analytics_views import AdminLearningAnalyticsView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.accounts import views as accounts
 from apps.accounts import admin_views as admin_accounts
@@ -29,6 +30,7 @@ urlpatterns = [
     path('api/v1/tutor/speech/', TutorSpeechView.as_view()),
     path('api/v1/tutor/transcribe/', TutorTranscribeView.as_view()),
     path('api/v1/me/learning/', education.LearningDashboardView.as_view()),
+    path('api/v1/admin/analytics/', AdminLearningAnalyticsView.as_view()),
     path('api/v1/admin/users/', admin_accounts.AdminUserList.as_view()),
     path('api/v1/admin/users/<int:pk>/', admin_accounts.AdminUserDetail.as_view()),
     path('api/v1/admin/users/<int:pk>/learning-progress/', admin_accounts.AdminUserLearningProgress.as_view()),
