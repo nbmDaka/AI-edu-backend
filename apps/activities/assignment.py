@@ -10,8 +10,10 @@ from apps.mediafiles.models import MediaFile
 from apps.mediafiles.uploads import ATTACHMENT_TYPES
 
 
+
 def make_assignment_plugin(checklist_class):
     class GuidedAssignmentPlugin(checklist_class):
+        # pylint: disable=too-many-ancestors
         manifest = {
             **checklist_class.manifest,
             'type': 'guided_assignment', 'version': '1.0.0',
