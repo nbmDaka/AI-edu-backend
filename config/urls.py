@@ -10,6 +10,7 @@ from apps.lessons import views as lessons
 from apps.assessments import views as assessments
 from apps.mediafiles import views as mediafiles
 from apps.tutor.views import TutorChatView, TutorSpeechView, TutorTranscribeView
+from apps.tutor.avatar import TutorAvatarConfigView, TutorAvatarModelView
 from apps.activities import views as activities
 from apps.activities.workspace import views as workspace
 from apps.lessons.importing import views as lecture_imports
@@ -29,6 +30,8 @@ urlpatterns = [
     path('api/v1/tutor/chat/', TutorChatView.as_view()),
     path('api/v1/tutor/speech/', TutorSpeechView.as_view()),
     path('api/v1/tutor/transcribe/', TutorTranscribeView.as_view()),
+    path('api/v1/tutor/avatar/config/', TutorAvatarConfigView.as_view()),
+    path('api/v1/tutor/avatar/model/', TutorAvatarModelView.as_view()),
     path('api/v1/me/learning/', education.LearningDashboardView.as_view()),
     path('api/v1/admin/analytics/', AdminLearningAnalyticsView.as_view()),
     path('api/v1/admin/users/', admin_accounts.AdminUserList.as_view()),

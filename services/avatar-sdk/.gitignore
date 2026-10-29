@@ -1,0 +1,10 @@
+models/
+sdk/
+venv*/
+__pycache__/
+*.trt
+*.onnx
+*.npz
+*.glb
+*.wav
+stream-key
