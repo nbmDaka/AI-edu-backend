@@ -46,3 +46,24 @@ This is streamed text plus phrase-level TTS with microphone VAD and interruption
 not an OpenAI Realtime speech-to-speech session. It is a bounded pilot, not a
 multi-user GPU scheduler. Character assets, SDK binaries, model weights and
 credentials are deliberately not distributed in this repository.
+
+## Speech Continuity
+
+The SDK session is prepared in parallel with text generation. A locale-aware
+sentence segmenter preserves complete sentences and decimal numbers; only an
+oversized sentence is split at a clause/word to respect the voice worker's
+1000-character input bound. Replaying a response never cuts a word at a fixed
+character count. Two ordered TTS requests overlap synthesis of the next sentence
+with the current NVIDIA inference, without unbounded provider concurrency.
+Cancellation aborts prefetch as well as inference. The 90-second stream, durable
+quotas, private endpoints and explicit activation deadline remain unchanged.
+After the first second of audio, inference requests batch up to one second to
+reduce cross-cloud round trips; browser audio packets remain at most half a
+second. Partial PCM carries across sentence boundaries without added silence.
+
+Browser playback uses one audio/animation clock, a shorter initial buffer and
+a larger recovery buffer after a real underrun. Microphone turns detected while
+the teacher is speaking are discarded to prevent self-interruption over speakers;
+users can still stop the teacher explicitly. This is protected turn-taking, not
+full-duplex echo-independent voice barge-in. A cold GPU start, provider latency
+or a broken network cannot be removed by these changes.

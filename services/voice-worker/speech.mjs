@@ -15,7 +15,7 @@ export async function* streamPcm(text, { apiKey, model, voice, signal, fetchImpl
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model, voice, input: text, response_format: 'pcm', speed: 0.98,
-      instructions: 'Speak Russian with native pronunciation. Sound like a calm, approachable male university teacher around 36 to 45. Use a natural medium pitch, clear conversational delivery and brief meaningful pauses. Do not imitate any real person. Read only the supplied text.',
+      instructions: 'Speak Russian with native pronunciation. Sound like a calm, approachable male university teacher around 36 to 45. Use a natural medium pitch and steady conversational pace. Read the complete sentence as one connected thought, with smooth intonation and brief natural pauses, without exaggerated breaks between words. Do not add greetings, filler or other text. Do not imitate any real person. Read only the supplied text.',
     }),
   });
   if (!response.ok) {
