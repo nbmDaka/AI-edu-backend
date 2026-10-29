@@ -1,0 +1,24 @@
+services:
+  avatar-gateway:
+    build: .
+    image: aiedu-avatar-gateway:sdk-v1
+    env_file: [.env.gateway]
+    volumes:
+      - ./secrets:/run/secrets:ro
+      - avatar_quota:/data
+    networks:
+      platform:
+        aliases: [aiedu-avatar-gateway]
+    restart: "no"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+volumes:
+  avatar_quota:
+networks:
+  platform:
+    external: true
+    name: aiedu-platform

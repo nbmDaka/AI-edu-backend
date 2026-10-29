@@ -113,7 +113,15 @@ LECTURE_IMPORT_TIMEOUT = int(os.getenv('LECTURE_IMPORT_TIMEOUT', '900'))
 LECTURE_IMPORT_OCR_LANGUAGES = os.getenv('LECTURE_IMPORT_OCR_LANGUAGES', 'rus+eng+kaz')
 AI_SERVICE_URL = os.getenv('AI_SERVICE_URL', '').rstrip('/')
 AI_SERVICE_API_KEY = os.getenv('AI_SERVICE_API_KEY', '')
-AI_AVATAR_SERVICE_URL = os.getenv('AI_AVATAR_SERVICE_URL', '').rstrip('/') if DEBUG else ''
+AI_AVATAR_ENABLED = os.getenv('AI_AVATAR_ENABLED', '0').strip().lower() in ('1', 'true')
+AI_AVATAR_SERVICE_URL = os.getenv('AI_AVATAR_SERVICE_URL', '').rstrip('/') if DEBUG or AI_AVATAR_ENABLED else ''
+AI_AVATAR_ALLOWED_USERS = tuple(value.strip().lower() for value in os.getenv('AI_AVATAR_ALLOWED_USERS', '').split(',') if value.strip())
+AI_AVATAR_MODEL_KEY = os.getenv('AI_AVATAR_MODEL_KEY', '')
+AI_AVATAR_MODEL_VERSION = os.getenv('AI_AVATAR_MODEL_VERSION', '')
+try:
+    AI_AVATAR_EXPIRES_AT = int(os.getenv('AI_AVATAR_EXPIRES_AT', '0'))
+except ValueError:
+    AI_AVATAR_EXPIRES_AT = 0
 AI_SERVICE_TIMEOUT = int(os.getenv('AI_SERVICE_TIMEOUT', '90'))
 AI_TUTOR_RATE = os.getenv('AI_TUTOR_RATE', '20/min')
 PUBLIC_SITE_URL = os.getenv('PUBLIC_SITE_URL', 'https://aiedu.com.kz').rstrip('/')

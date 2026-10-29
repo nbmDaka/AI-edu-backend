@@ -1,0 +1,29 @@
+services:
+  voice-worker:
+    build: .
+    image: aiedu-voice-worker:cedar-v1
+    env_file:
+      - ${TUTOR_ENV_FILE:-../../.env.ai-tutor}
+      - .env.worker
+    volumes: [voice_quota:/data]
+    networks:
+      platform:
+        aliases: [aiedu-voice-worker]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+volumes:
+  voice_quota:
+networks:
+  platform:
+    external: true
+    name: aiedu-platform

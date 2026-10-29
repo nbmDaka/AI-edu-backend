@@ -96,8 +96,22 @@ jobs:
       - name: Validate worker Python syntax without launching NVIDIA
         run: python -m py_compile audio2face-stream.py
 
+  verify-cloud-avatar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/avatar-gateway/package-lock.json
+      - name: Install private gateway dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --prefix services/avatar-gateway
+      - name: Check streamed speech, quotas and private avatar transport
+        run: node --test services/voice-worker/speech.test.mjs services/avatar-gateway/gateway.test.cjs
+
   publish:
-    needs: [verify, verify-ai, verify-avatar]
+    needs: [verify, verify-ai, verify-avatar, verify-cloud-avatar]
     runs-on: ubuntu-latest
     permissions:
       contents: read

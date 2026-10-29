@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
 from .context import lesson_context
+from .avatar import avatar_allowed, private_gateway_url
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,14 @@ def upstream_request(path, payload=None, *, body=None, content_type='application
     base = settings.AI_SERVICE_URL
     if avatar:
         base = settings.AI_AVATAR_SERVICE_URL
-        if not settings.DEBUG or not base or not settings.AI_SERVICE_API_KEY:
-            raise TutorUnavailable('Локальный аватар не включён.')
+        if not base or not settings.AI_SERVICE_API_KEY:
+            raise TutorUnavailable('Сервис аватара не включён.')
         from urllib.parse import urlsplit
         parsed = urlsplit(base)
-        if parsed.scheme != 'http' or parsed.hostname not in ('localhost', '127.0.0.1'):
+        if settings.DEBUG and (parsed.scheme != 'http' or parsed.hostname not in ('localhost', '127.0.0.1')):
             raise TutorUnavailable('Аватар доступен только в локальном тесте.')
+        if not settings.DEBUG and (not settings.AI_AVATAR_ENABLED or not private_gateway_url()):
+            raise TutorUnavailable('Облачный аватар не включён.')
     req = Request(f'{base}/api/{path}', data=body if body is not None else json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
     try:
         return urlopen(req, timeout=settings.AI_SERVICE_TIMEOUT)
@@ -74,7 +77,7 @@ def upstream_request(path, payload=None, *, body=None, content_type='application
         status = error.code
         error.close()
         logger.warning('AI service rejected tutor request with HTTP %s', status)
-        detail = 'Кевин завершает предыдущий ответ. Повторите запрос через секунду.' if avatar else 'Лимит запросов к тьютору исчерпан. Попробуйте позже.'
+        detail = 'Преподаватель занят или лимит теста исчерпан. Повторите запрос позже.' if avatar else 'Лимит запросов к тьютору исчерпан. Попробуйте позже.'
         exc = TutorUnavailable(detail if status == 429 else None)
         if status == 429:
             exc.status_code = 429
@@ -93,6 +96,8 @@ class TutorChatView(GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if data['avatar'] and not settings.DEBUG and not avatar_allowed(request.user):
+            raise TutorUnavailable('3D-преподаватель пока недоступен для этой учётной записи.')
         lesson, course, content = lesson_context(request.user, data['context_type'], data['context_id'])
         payload = {
             'session_id': f'platform:{request.user.pk}:{"practice:" if getattr(lesson, "type", None) == "PRACTICE" else ""}{lesson.pk}:{data["session_id"]}',
@@ -106,7 +111,7 @@ class TutorChatView(GenericAPIView):
         }
         if data['avatar_speech']:
             if not data['avatar']:
-                raise serializers.ValidationError('Повторная озвучка требует локального аватара.')
+                raise serializers.ValidationError('Повторная озвучка требует включённого аватара.')
             payload['speech_text'] = data['messages'][-1]['content']
         upstream = upstream_request('avatar' if data['avatar'] else 'chat', payload, avatar=data['avatar'])
         if 'text/event-stream' not in upstream.headers.get('Content-Type', ''):
