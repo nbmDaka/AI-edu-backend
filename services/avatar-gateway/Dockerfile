@@ -3,7 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
-COPY gateway.cjs entrypoint.sh ./
+COPY gateway.cjs speech-queue.cjs entrypoint.sh ./
 RUN mkdir -p /data && chown node:node /data
 USER node
 ENTRYPOINT ["bash", "/app/entrypoint.sh"]
