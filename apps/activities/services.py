@@ -123,6 +123,9 @@ def submit(user, item, submission_id, data):
         teacher_score=evaluated.score if evaluated.source == 'TEACHER' else None,
         effective_score=evaluated.score, grading_source=evaluated.source,
         psi_value=evaluated.score, psi_source=evaluated.source)
+    from apps.education.activity import log_event
+    log_event(user, 'PRACTICE_SUBMITTED', item=item, score=round(evaluated.score, 4), completed=bool(evaluated.completed),
+              practice_type=version.practice_definition.practice_type)
     if evaluated.completed:
         complete_item_from_server(user, item)
     else:

@@ -14,6 +14,42 @@ from apps.assessments.models import TestAttempt
 from .models import Course, LearningItem, LearningTrack, Module, PracticeSubmission, UserLearningItemProgress
 
 
+def recommendation_stats(students, items, module_ids):
+    """Latest adaptive decision of every student per module; anonymous numbers only."""
+    attempts = (TestAttempt.objects.filter(user__in=students, test__deleted_at__isnull=True, test__learning_item__in=items,
+                                           adaptive_result__isnull=False)
+                .order_by('completed_at', 'pk').values_list('user_id', 'test__learning_item__module_id', 'adaptive_result'))
+    latest, counts = {}, Counter()
+    for user_id, module_id, result in attempts.iterator():
+        if isinstance(result, dict) and 'readiness' in result:
+            latest[(user_id, module_id)] = result
+            counts[module_id] += 1
+    grouped = defaultdict(list)
+    for (_, module_id), result in latest.items():
+        grouped[module_id].append(result)
+    stats = {}
+    for module_id in module_ids:
+        results = grouped.get(module_id, [])
+        passed = sum(bool(row.get('module_passed')) for row in results)
+        topics = Counter()
+        titles = {}
+        for row in results:
+            for topic in (row.get('recommendation') or {}).get('weak_topics', []):
+                topics[topic['competency']] += 1
+                titles.setdefault(topic['competency'], topic['title'])
+        readiness = sorted(float(row['readiness']) for row in results)
+        stats[module_id] = {
+            'attempts': counts[module_id], 'tested_students': len(results),
+            'next_students': passed, 'repeat_students': len(results) - passed,
+            'next_rate': round(passed / len(results) * 100, 1) if results else 0.0,
+            'average_readiness': round(sum(readiness) / len(readiness), 2) if readiness else None,
+            'readiness_values': readiness,
+            'weak_topics': [{'competency': key, 'title': titles[key], 'students': n}
+                            for key, n in sorted(topics.items(), key=lambda pair: (-pair[1], titles[pair[0]].casefold()))[:5]],
+        }
+    return stats
+
+
 def learning_analytics(*, period='30d', track=None, course=None):
     now = timezone.now()
     since = None if period == 'all' else now - timedelta(days=int(period[:-1]))
@@ -25,7 +61,7 @@ def learning_analytics(*, period='30d', track=None, course=None):
     selected = [row for row in options if (not track or row['learning_track_id'] == track)
                 and (not course or row['id'] == course)]
     modules = list(Module.objects.filter(course_id__in=[row['id'] for row in selected], is_published=True)
-                   .values('id', 'short_id', 'title', 'course_id'))
+                   .values('id', 'short_id', 'title', 'course_id', 'adaptive_threshold'))
     items = LearningItem.objects.filter(module_id__in=[row['id'] for row in modules], status='PUBLISHED')
     item_counts = dict(items.order_by().values('module_id').annotate(n=Count('id')).values_list('module_id', 'n'))
     progress = UserLearningItemProgress.objects.filter(user__in=students, learning_item__in=items)
@@ -60,11 +96,13 @@ def learning_analytics(*, period='30d', track=None, course=None):
                 'completion_rate': round(len(completed) / len(users) * 100, 1) if users else 0.0}
 
     module_rows = []
+    decisions = recommendation_stats(students, items, [row['id'] for row in modules])
     for row in modules:
         mid, cid = row['id'], row['course_id']
         count = item_counts.get(mid, 0)
         completed = {uid for uid, n in completed_items[mid].items() if count and n == count}
-        module_rows.append({**row, 'item_count': count, **usage(module_users[mid], module_active[mid], completed)})
+        module_rows.append({**row, 'item_count': count, **usage(module_users[mid], module_active[mid], completed),
+                            'threshold': row['adaptive_threshold'], 'recommendations': decisions[mid]})
         course_users[cid].update(module_users[mid])
         course_active[cid].update(module_active[mid])
         course_completed_items[cid].update(completed_items[mid])

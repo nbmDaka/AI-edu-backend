@@ -3,8 +3,9 @@ from apps.education.models import Lesson
 
 
 def source_media_ids(config):
-    ids = {file['media'] for file in config.get('source_files', [])
-           if isinstance(file, dict) and type(file.get('media')) is int}
+    # python_lab keeps its data files under `datasets`; they are practice sources too.
+    files = [*config.get('source_files', []), *config.get('datasets', [])]
+    ids = {file['media'] for file in files if isinstance(file, dict) and type(file.get('media')) is int}
     for instruction in config.get('instructions', []):
         try:
             pending = [json.loads(instruction)]

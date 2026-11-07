@@ -47,6 +47,9 @@ class LessonSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'short_id', 'created_at', 'updated_at']
 
 
+MAX_ITEM_COMPETENCIES = 10
+
+
 class LearningItemSerializer(serializers.ModelSerializer):
     is_locked = serializers.SerializerMethodField()
     def get_is_locked(self, obj) -> bool:
@@ -60,11 +63,22 @@ class LearningItemSerializer(serializers.ModelSerializer):
     course_title = serializers.CharField(source='module.course.title', read_only=True)
     class Meta:
         model = LearningItem
-        fields = ['id', 'short_id', 'module', 'type', 'title', 'description', 'practice_version', 'position', 'status', 'is_locked',
+        fields = ['id', 'short_id', 'module', 'type', 'title', 'description', 'practice_version', 'position', 'status', 'is_locked', 'competencies',
                   'module_short_id', 'module_title', 'module_position', 'course_id', 'course_short_id',
                   'course_title', 'lesson', 'lesson_short_id', 'test', 'practice', 'created_at', 'updated_at']
         read_only_fields = ['id', 'short_id', 'lesson', 'lesson_short_id', 'test', 'practice', 'practice_version', 'created_at', 'updated_at']
         validators = []  # Position is assigned and validated under a module lock in the view.
+
+    def validate_competencies(self, value):
+        if not isinstance(value, list) or len(value) > MAX_ITEM_COMPETENCIES:
+            raise serializers.ValidationError(f'Укажите не больше {MAX_ITEM_COMPETENCIES} тем')
+        topics = []
+        for topic in value:
+            if not isinstance(topic, str) or not topic.strip() or len(topic.strip()) > 100:
+                raise serializers.ValidationError('Тема — непустая строка до 100 символов')
+            if topic.strip().casefold() not in {known.casefold() for known in topics}:
+                topics.append(topic.strip())
+        return topics
 
     def validate(self, attrs):
         if 'practice_criteria' in self.initial_data or 'practice_version' in self.initial_data:

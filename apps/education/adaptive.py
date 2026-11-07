@@ -123,13 +123,7 @@ def evaluate_module_attempt(user, item, question_results, practice):
         index = next(index for index, member in enumerate(ordered) if member.pk == module.pk)
         if index + 1 < len(ordered):
             next_item = ordered[index + 1].items.filter(status='PUBLISHED').order_by('position', 'id').first()
-    else:
-        # The next attempt requires studying this module again; retain attempt history.
-        content = module.items.filter(status='PUBLISHED').exclude(type='TEST')
-        UserLearningItemProgress.objects.filter(user=user, learning_item__in=content).update(
-            progress_percent=0, is_completed=False, completed_at=None)
-        PracticeSubmission.objects.filter(user=user, item__in=content).update(is_current=False)
-    return {
+    result = {
         'readiness': round(readiness * 100, 2), 'threshold': module.adaptive_threshold,
         'module_passed': passed, 'module_completed': progress.is_completed,
         'theory': theory, 'practice': practice, 'errors': errors, 'competency': competency,
@@ -137,3 +131,21 @@ def evaluate_module_attempt(user, item, question_results, practice):
         'repeat_item_short_id': first.short_id if first else item.short_id,
         'next_item_short_id': next_item.short_id if next_item else None,
     }
+    from .recommendations import build_recommendation, review_route
+    review_items = list(module.items.filter(status='PUBLISHED', type__in=['LECTURE', 'PRACTICE']).order_by('position', 'id'))
+    recommendation = build_recommendation(result, question_results, review_items)
+    if not progress.is_completed:
+        # The next attempt requires studying again; attempt history is kept. Close to the threshold,
+        # only the materials of the weak topics are reopened; otherwise the whole module is.
+        content = list(module.items.filter(status='PUBLISHED').exclude(type='TEST').order_by('position', 'id'))
+        route = review_route(recommendation, content)
+        reopened = route['items'] or content
+        UserLearningItemProgress.objects.filter(user=user, learning_item__in=reopened).update(
+            progress_percent=0, is_completed=False, completed_at=None)
+        PracticeSubmission.objects.filter(user=user, item__in=reopened).update(is_current=False)
+        recommendation['route'] = {'scope': route['scope'], 'items': [
+            {'short_id': entry.short_id, 'title': entry.title, 'type': entry.type} for entry in reopened]}
+        if reopened:
+            result['repeat_item_short_id'] = reopened[0].short_id
+    result['recommendation'] = recommendation
+    return result

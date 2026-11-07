@@ -37,10 +37,29 @@ class AnalyticsCourseSerializer(AnalyticsCourseOptionSerializer, AnalyticsUsageS
     item_count = serializers.IntegerField()
 
 
+class AnalyticsWeakTopicSerializer(serializers.Serializer):
+    competency = serializers.CharField()
+    title = serializers.CharField()
+    students = serializers.IntegerField()
+
+
+class AnalyticsRecommendationSerializer(serializers.Serializer):
+    attempts = serializers.IntegerField()
+    tested_students = serializers.IntegerField()
+    next_students = serializers.IntegerField()
+    repeat_students = serializers.IntegerField()
+    next_rate = serializers.FloatField()
+    average_readiness = serializers.FloatField(allow_null=True)
+    readiness_values = serializers.ListField(child=serializers.FloatField())
+    weak_topics = AnalyticsWeakTopicSerializer(many=True)
+
+
 class AnalyticsModuleSerializer(AnalyticsTrackOptionSerializer, AnalyticsUsageSerializer):
     short_id = serializers.CharField()
     course_id = serializers.IntegerField()
     item_count = serializers.IntegerField()
+    threshold = serializers.IntegerField()
+    recommendations = AnalyticsRecommendationSerializer()
 
 
 class AnalyticsTrackSerializer(AnalyticsTrackOptionSerializer):

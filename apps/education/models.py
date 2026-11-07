@@ -126,6 +126,8 @@ class LearningItem(ShortIdModel):
     lesson = models.OneToOneField(Lesson, null=True, blank=True, on_delete=PROTECT, related_name='learning_item')
     test = models.OneToOneField('assessments.Test', null=True, blank=True, on_delete=PROTECT, related_name='learning_item')
     practice = models.OneToOneField('activities.PracticeDefinition', null=True, blank=True, on_delete=PROTECT, related_name='learning_item')
+    # Topics (test competencies) this lecture or practice teaches; used to point a learner at what to review.
+    competencies = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -213,3 +215,26 @@ class Certificate(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user', 'course'], name='unique_user_course_certificate')]
+
+
+class ActivityEvent(models.Model):
+    """Activity log: one row per meaningful learner action (not per progress tick)."""
+    class Type(models.TextChoices):
+        LOGIN = 'LOGIN'
+        LECTURE_STARTED = 'LECTURE_STARTED'
+        LECTURE_COMPLETED = 'LECTURE_COMPLETED'
+        PRACTICE_SUBMITTED = 'PRACTICE_SUBMITTED'
+        TEST_SUBMITTED = 'TEST_SUBMITTED'
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='activity_events')
+    type = models.CharField(max_length=24, choices=Type.choices)
+    course = models.ForeignKey(Course, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    module = models.ForeignKey(Module, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    item = models.ForeignKey(LearningItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['user', '-created_at'], name='activity_user_created'),
+                   models.Index(fields=['type', '-created_at'], name='activity_type_created')]

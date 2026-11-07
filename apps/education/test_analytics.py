@@ -161,4 +161,4 @@ class LearningAnalyticsTests(TestCase):
         with CaptureQueriesContext(connection) as second:
             learning_analytics()
         self.assertEqual(len(first), len(second))
-        self.assertLessEqual(len(second), 10)
+        self.assertLessEqual(len(second), 11)  # +1: latest adaptive decisions per module

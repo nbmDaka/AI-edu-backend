@@ -5,6 +5,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.accounts import views as accounts
 from apps.accounts import admin_views as admin_accounts
 from apps.education import views as education
+from apps.education import activity_views as education_activity
 from apps.education import certificates
 from apps.lessons import views as lessons
 from apps.assessments import views as assessments
@@ -33,6 +34,10 @@ urlpatterns = [
     path('api/v1/tutor/avatar/config/', TutorAvatarConfigView.as_view()),
     path('api/v1/tutor/avatar/model/', TutorAvatarModelView.as_view()),
     path('api/v1/me/learning/', education.LearningDashboardView.as_view()),
+    path('api/v1/me/readiness/', education.ReadinessDashboardView.as_view()),
+    path('api/v1/me/activity/', education_activity.MyActivity.as_view()),
+    path('api/v1/admin/activity/', education_activity.AdminActivityList.as_view()),
+    path('api/v1/admin/activity/summary/', education_activity.AdminActivitySummary.as_view()),
     path('api/v1/admin/analytics/', AdminLearningAnalyticsView.as_view()),
     path('api/v1/admin/users/', admin_accounts.AdminUserList.as_view()),
     path('api/v1/admin/users/<int:pk>/', admin_accounts.AdminUserDetail.as_view()),
@@ -49,6 +54,7 @@ urlpatterns = [
     path('api/v1/certificates/<uuid:token>/qr/', certificates.CertificateQRView.as_view()),
     path('api/v1/modules/', education.ModuleList.as_view()),
     path('api/v1/modules/<str:short_id>/', education.ModuleDetail.as_view()),
+    path('api/v1/modules/<str:short_id>/threshold/', education.ModuleThreshold.as_view()),
     path('api/v1/items/', education.LearningItemList.as_view()),
     path('api/v1/items/<str:short_id>/', education.LearningItemDetail.as_view()),
     path('api/v1/items/<str:short_id>/progress/', education.ItemProgressView.as_view()),

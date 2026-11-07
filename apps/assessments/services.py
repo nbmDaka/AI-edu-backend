@@ -141,6 +141,11 @@ def submit_attempt(test_id, user, answers):
     attempt = TestAttempt.objects.create(test=test, user=user, test_version=test.version,
         answers=answers, snapshot=snapshot, earned_points=earned, total_points=total,
         percent=percent, passed=percent >= test.passing_percent, adaptive_result=adaptive_result)
+    from apps.education.activity import log_event
+    details = {'percent': percent, 'passed': attempt.passed}
+    if adaptive_result:
+        details.update(readiness=adaptive_result['readiness'], module_passed=adaptive_result['module_passed'])
+    log_event(user, 'TEST_SUBMITTED', item=learning_item, test_title=test.title, **details)
     if learning_item and (adaptive_result['module_completed'] if adaptive else attempt.passed):
         from apps.education.progress import complete_item_from_server
         complete_item_from_server(user, test.learning_item)
