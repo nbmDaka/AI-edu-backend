@@ -9,3 +9,8 @@ gunicorn==23.0.0
 reportlab==4.5.1
 qrcode==8.2
 python-docx==1.2.0
+# Модуль «Виртуальные лаборатории» (apps/virtual_labs)
+python-pptx==1.0.2
+pypdf==5.9.0
+PyJWT==2.10.1
+cryptography==45.0.7

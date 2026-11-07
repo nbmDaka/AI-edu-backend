@@ -44,8 +44,11 @@ class PracticeEngineTests(TestCase):
     def test_catalog_and_unconfigured_creation(self):
         response = self.client.get('/api/v1/practice-types/')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([row['type'] for row in response.data], [
-            'lecture_workshop', 'practical_workshop', 'pedagogical_workshop', 'guided_assignment'])
+        types = [row['type'] for row in response.data]
+        # Встроенные практики идут первыми; модуль «Виртуальные лаборатории» добавляет свои типы virtual_lab_* после них.
+        builtin = [value for value in types if not value.startswith('virtual_lab_')]
+        self.assertEqual(builtin, ['lecture_workshop', 'practical_workshop', 'pedagogical_workshop', 'guided_assignment'])
+        self.assertEqual(types[:len(builtin)], builtin)
         self.assertEqual(response.data[0]['grading'], 'self_assessment')
         self.assertIn('criteria', response.data[0]['capabilities'])
         self.assertIn('config_schema', response.data[0])

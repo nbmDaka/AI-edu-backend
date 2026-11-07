@@ -1,0 +1,350 @@
+[
+ {
+  "case": 0,
+  "config": [
+   {
+    "key": "structure",
+    "weight": 2
+   },
+   {
+    "key": "completeness",
+    "weight": 0.5
+   },
+   {
+    "key": "sources",
+    "weight": 3
+   }
+  ],
+  "total": 97,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "audience",
+   "clarity",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 0,
+  "config": [
+   {
+    "key": "audience",
+    "isActive": false
+   },
+   {
+    "key": "clarity",
+    "is_active": false
+   },
+   {
+    "key": "science",
+    "weight": 1.5
+   }
+  ],
+  "total": 95,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 3,
+  "config": [
+   {
+    "key": "structure",
+    "weight": 2
+   },
+   {
+    "key": "completeness",
+    "weight": 0.5
+   },
+   {
+    "key": "sources",
+    "weight": 3
+   }
+  ],
+  "total": 81,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "audience",
+   "clarity",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 3,
+  "config": [
+   {
+    "key": "audience",
+    "isActive": false
+   },
+   {
+    "key": "clarity",
+    "is_active": false
+   },
+   {
+    "key": "science",
+    "weight": 1.5
+   }
+  ],
+  "total": 74,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 7,
+  "config": [
+   {
+    "key": "structure",
+    "weight": 2
+   },
+   {
+    "key": "completeness",
+    "weight": 0.5
+   },
+   {
+    "key": "sources",
+    "weight": 3
+   }
+  ],
+  "total": 78,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "audience",
+   "clarity",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 7,
+  "config": [
+   {
+    "key": "audience",
+    "isActive": false
+   },
+   {
+    "key": "clarity",
+    "is_active": false
+   },
+   {
+    "key": "science",
+    "weight": 1.5
+   }
+  ],
+  "total": 71,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 12,
+  "config": [
+   {
+    "key": "structure",
+    "weight": 2
+   },
+   {
+    "key": "completeness",
+    "weight": 0.5
+   },
+   {
+    "key": "sources",
+    "weight": 3
+   }
+  ],
+  "total": 81,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "audience",
+   "clarity",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 12,
+  "config": [
+   {
+    "key": "audience",
+    "isActive": false
+   },
+   {
+    "key": "clarity",
+    "is_active": false
+   },
+   {
+    "key": "science",
+    "weight": 1.5
+   }
+  ],
+  "total": 71,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 20,
+  "config": [
+   {
+    "key": "structure",
+    "weight": 2
+   },
+   {
+    "key": "completeness",
+    "weight": 0.5
+   },
+   {
+    "key": "sources",
+    "weight": 3
+   }
+  ],
+  "total": 83,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "audience",
+   "clarity",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 20,
+  "config": [
+   {
+    "key": "audience",
+    "isActive": false
+   },
+   {
+    "key": "clarity",
+    "is_active": false
+   },
+   {
+    "key": "science",
+    "weight": 1.5
+   }
+  ],
+  "total": 77,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 30,
+  "config": [
+   {
+    "key": "structure",
+    "weight": 2
+   },
+   {
+    "key": "completeness",
+    "weight": 0.5
+   },
+   {
+    "key": "sources",
+    "weight": 3
+   }
+  ],
+  "total": 47,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "audience",
+   "clarity",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ },
+ {
+  "case": 30,
+  "config": [
+   {
+    "key": "audience",
+    "isActive": false
+   },
+   {
+    "key": "clarity",
+    "is_active": false
+   },
+   {
+    "key": "science",
+    "weight": 1.5
+   }
+  ],
+  "total": 42,
+  "criteria": [
+   "structure",
+   "completeness",
+   "topic",
+   "outcomes",
+   "terms",
+   "pedagogy",
+   "science",
+   "sources"
+  ]
+ }
+]
