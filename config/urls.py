@@ -85,6 +85,7 @@ urlpatterns = [
     path('api/v1/media/files/', mediafiles.AttachmentUploadView.as_view()),
     path('api/v1/media/<int:pk>/', mediafiles.MediaView.as_view()),
     path('api/v1/media/<int:pk>/download/', mediafiles.MediaDownloadView.as_view()),
+    path('api/v1/virtual-labs/', include('apps.virtual_labs.urls')),
     path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/v1/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]

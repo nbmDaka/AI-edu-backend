@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     'apps.accounts', 'apps.education', 'apps.lessons', 'apps.assessments',
     'apps.mediafiles', 'apps.activities',
     'apps.tutor',
+    'apps.virtual_labs',
 ]
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -56,7 +57,10 @@ if os.getenv('DATABASE_HOST'):
         'USER': os.getenv('DATABASE_USER', 'aiedu'), 'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
         'HOST': os.getenv('DATABASE_HOST'), 'PORT': os.getenv('DATABASE_PORT', '5432')}}
 else:
-    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+    # IMMEDIATE + timeout: при локальной разработке на SQLite параллельные запросы на запись ждут друг друга,
+    # а не падают с «database is locked». На PostgreSQL (DATABASE_HOST) не влияет.
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3',
+                             'OPTIONS': {'transaction_mode': 'IMMEDIATE', 'timeout': 20}}}
 if os.getenv('REDIS_URL'):
     CACHES = {'default': {'BACKEND': 'django_redis.cache.RedisCache', 'LOCATION': os.getenv('REDIS_URL'),
                           'OPTIONS': {'CLIENT_CLASS': 'django_redis.client.DefaultClient'}}}
