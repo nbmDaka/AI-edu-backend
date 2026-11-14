@@ -105,6 +105,9 @@ for constructor in CONSTRUCTORS:
 from .assignment import make_assignment_plugin
 registry.register(make_assignment_plugin(ChecklistPlugin))
 
+from .biometric_lab import make_biometric_lab_plugin
+registry.register(make_biometric_lab_plugin(ChecklistPlugin))
+
 # Keep pinned historical assignments usable with the same chat runtime.
 class LegacyPracticePlugin(type(lecture_plugin)):
     manifest = {**lecture_plugin.manifest, 'type': 'checklist_practice', 'available': False}
