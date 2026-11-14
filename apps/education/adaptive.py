@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError
 
 from .models import (LearningItem, PracticeSubmission, UserCompetencyProgress,
                      UserLearningItemProgress, UserModuleProgress)
+from .recommendations import recommend_materials
 
 
 def calculate_readiness(theory, practice, errors, competency):
@@ -136,4 +137,5 @@ def evaluate_module_attempt(user, item, question_results, practice):
         'competencies': competencies, 'module_short_id': module.short_id,
         'repeat_item_short_id': first.short_id if first else item.short_id,
         'next_item_short_id': next_item.short_id if next_item else None,
+        'recommendations': recommend_materials(user, module, competencies),
     }

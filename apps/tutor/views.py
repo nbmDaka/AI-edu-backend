@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
 from .context import lesson_context
+from .learning_context import learning_context, avatar_learning_prompt
 from .avatar import avatar_allowed, private_gateway_url
 
 logger = logging.getLogger(__name__)
@@ -106,9 +107,13 @@ class TutorChatView(GenericAPIView):
             'lesson_id': lesson.short_id,
             'lesson_title': lesson.title,
             'lesson_content': content,
+            'learning_context': learning_context(request.user, lesson, course),
             'locateInLecture': getattr(lesson, 'type', None) != 'PRACTICE',
             'client_metadata': {'platform': 'ai-edu', 'user_id': str(request.user.pk)},
         }
+        if data['avatar']:
+            # Private avatar gateways use a server-authored prompt adapter rather than the chat schema.
+            payload['learning_context_prompt'] = avatar_learning_prompt(payload['learning_context'])
         if data['avatar_speech']:
             if not data['avatar']:
                 raise serializers.ValidationError('Повторная озвучка требует включённого аватара.')

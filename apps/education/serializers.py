@@ -48,6 +48,11 @@ class LessonSerializer(serializers.ModelSerializer):
 
 
 class LearningItemSerializer(serializers.ModelSerializer):
+    competency_keys = serializers.ListField(child=serializers.CharField(max_length=100), max_length=50, required=False)
+
+    def validate_competency_keys(self, values):
+        return sorted(set(value.strip().casefold() for value in values))
+
     is_locked = serializers.SerializerMethodField()
     def get_is_locked(self, obj) -> bool:
         return request_module_is_locked(self.context.get('request'), obj.module)
@@ -60,7 +65,7 @@ class LearningItemSerializer(serializers.ModelSerializer):
     course_title = serializers.CharField(source='module.course.title', read_only=True)
     class Meta:
         model = LearningItem
-        fields = ['id', 'short_id', 'module', 'type', 'title', 'description', 'practice_version', 'position', 'status', 'is_locked',
+        fields = ['id', 'short_id', 'module', 'type', 'title', 'description', 'competency_keys', 'practice_version', 'position', 'status', 'is_locked',
                   'module_short_id', 'module_title', 'module_position', 'course_id', 'course_short_id',
                   'course_title', 'lesson', 'lesson_short_id', 'test', 'practice', 'created_at', 'updated_at']
         read_only_fields = ['id', 'short_id', 'lesson', 'lesson_short_id', 'test', 'practice', 'practice_version', 'created_at', 'updated_at']
@@ -69,6 +74,8 @@ class LearningItemSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if 'practice_criteria' in self.initial_data or 'practice_version' in self.initial_data:
             raise serializers.ValidationError({'detail': 'Используйте редактор версий /practice/draft/'})
+        if attrs.get('competency_keys') and attrs.get('type', getattr(self.instance, 'type', None)) == 'TEST':
+            raise serializers.ValidationError({'competency_keys': 'Связи рекомендаций доступны только для лекций и практик'})
         if attrs.get('type') == 'PRACTICE' and attrs.get('status') == 'PUBLISHED':
             raise serializers.ValidationError({'status': 'Сначала настройте и опубликуйте версию практики'})
         return attrs

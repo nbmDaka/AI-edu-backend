@@ -87,13 +87,21 @@ def _save_test(test, data):
     return test
 
 @transaction.atomic
-def submit_attempt(test_id, user, answers):
+def submit_attempt(test_id, user, answers, request_id=None):
     from apps.accounts.models import User
     User.objects.select_for_update().get(pk=user.pk)
     test = Test.objects.select_for_update(of=('self',)).get(pk=test_id)
     from apps.education.access import can_access_test
     if not test.is_published or not can_access_test(user, test):
         raise PermissionDenied()
+    if request_id is not None:
+        from rest_framework import serializers
+        request_id = serializers.UUIDField().run_validation(request_id)
+        saved = TestAttempt.objects.filter(test=test, user=user, request_id=request_id).first()
+        if saved:
+            if saved.answers != answers:
+                raise ValidationError({'request_id': 'Ключ запроса уже использован с другими ответами'})
+            return saved
     learning_item = test.learning_item if hasattr(test, 'learning_item') else None
     adaptive = bool(learning_item and learning_item.module.course.adaptive_learning_enabled)
     practice = None
@@ -135,13 +143,39 @@ def submit_attempt(test_id, user, answers):
                          'options': [{'id': option.id, 'text': option.text} for option in options]})
     percent = round(100 * earned / total, 2) if total else 0
     adaptive_result = None
+    from apps.education.events import record_event, record_unlocks
+    from apps.education.models import LearningEvent, UserLearningItemProgress, PracticeSubmission
+    from apps.education.adaptive import module_states
+    before = module_states(user, learning_item.module.course) if learning_item else {}
+    reset_snapshot = None
+    if adaptive:
+        content = learning_item.module.items.filter(status='PUBLISHED').exclude(type='TEST')
+        reset_snapshot = {
+            'items': list(UserLearningItemProgress.objects.filter(user=user, learning_item__in=content)
+                          .values('learning_item_id', 'progress_percent', 'is_completed')),
+            'submission_ids': list(PracticeSubmission.objects.filter(user=user, item__in=content, is_current=True)
+                                   .values_list('pk', flat=True)),
+        }
     if adaptive:
         from apps.education.adaptive import evaluate_module_attempt
         adaptive_result = evaluate_module_attempt(user, learning_item, question_results, practice)
-    attempt = TestAttempt.objects.create(test=test, user=user, test_version=test.version,
+    attempt = TestAttempt.objects.create(test=test, user=user, test_version=test.version, request_id=request_id,
         answers=answers, snapshot=snapshot, earned_points=earned, total_points=total,
         percent=percent, passed=percent >= test.passing_percent, adaptive_result=adaptive_result)
     if learning_item and (adaptive_result['module_completed'] if adaptive else attempt.passed):
         from apps.education.progress import complete_item_from_server
         complete_item_from_server(user, test.learning_item)
+    module = learning_item.module if learning_item else test.lesson.module if test.lesson_id else None
+    if module:
+        details = {'test_version': test.version, 'percent': percent, 'passed': attempt.passed}
+        if adaptive_result:
+            details.update({key: adaptive_result[key] for key in
+                            ('readiness', 'threshold', 'module_passed', 'module_completed')})
+        record_event(user, module, LearningEvent.Kind.TEST_SUBMITTED, f'test:{attempt.pk}',
+                     item=learning_item, attempt=attempt, details=details)
+        if adaptive_result and not adaptive_result['module_completed']:
+            record_event(user, module, LearningEvent.Kind.MODULE_RESET, f'reset:{attempt.pk}',
+                         item=learning_item, attempt=attempt, details=reset_snapshot)
+        if learning_item:
+            record_unlocks(user, module.course, before, f'test:{attempt.pk}', item=learning_item, attempt=attempt)
     return attempt

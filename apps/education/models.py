@@ -118,6 +118,7 @@ class LearningItem(ShortIdModel):
 
     module = models.ForeignKey(Module, on_delete=PROTECT, related_name='items')
     type = models.CharField(max_length=10, choices=Type.choices)
+    competency_keys = models.JSONField(default=list, blank=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     practice_version = models.ForeignKey('activities.PracticeVersion', null=True, blank=True, on_delete=PROTECT, related_name='learning_items')
@@ -213,3 +214,26 @@ class Certificate(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['user', 'course'], name='unique_user_course_certificate')]
+
+
+class LearningEvent(models.Model):
+    class Kind(models.TextChoices):
+        MATERIAL_COMPLETED = 'material_completed'
+        PRACTICE_SUBMITTED = 'practice_submitted'
+        TEST_SUBMITTED = 'test_submitted'
+        MODULE_RESET = 'module_reset'
+        MODULE_UNLOCKED = 'module_unlocked'
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=PROTECT)
+    module = models.ForeignKey(Module, on_delete=PROTECT)
+    item = models.ForeignKey(LearningItem, null=True, blank=True, on_delete=PROTECT)
+    attempt = models.ForeignKey('assessments.TestAttempt', null=True, blank=True, on_delete=PROTECT)
+    submission = models.ForeignKey(PracticeSubmission, null=True, blank=True, on_delete=PROTECT)
+    kind = models.CharField(max_length=24, choices=Kind.choices)
+    deduplication_key = models.CharField(max_length=120, unique=True, editable=False)
+    details = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-id']
+        indexes = [models.Index(fields=['user', '-id'], name='learning_event_user_id')]

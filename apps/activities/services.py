@@ -104,6 +104,8 @@ def submit(user, item, submission_id, data):
         if saved_data == data and submission.is_current:
             return submission  # Network retry: preserve the existing snapshot and score.
         raise ValidationError({'detail': 'Попытка уже сдана. Начните новую попытку'})
+    from apps.education.adaptive import module_states
+    before = module_states(user, item.module.course)
     if is_workspace:
         from .workspace.services import prepare_submission
         data = prepare_submission(user, submission, data)
@@ -123,12 +125,19 @@ def submit(user, item, submission_id, data):
         teacher_score=evaluated.score if evaluated.source == 'TEACHER' else None,
         effective_score=evaluated.score, grading_source=evaluated.source,
         psi_value=evaluated.score, psi_source=evaluated.source)
+    from apps.education.events import record_event, record_unlocks
+    from apps.education.models import LearningEvent
+    record_event(user, item.module, LearningEvent.Kind.PRACTICE_SUBMITTED,
+                 f'practice:{submission.pk}', item=item, submission=submission,
+                 details={'score': evaluated.score, 'completed': evaluated.completed,
+                          'grading_source': evaluated.source, 'practice_version': version.pk})
     if evaluated.completed:
         complete_item_from_server(user, item)
     else:
         # Preserve the existing checklist methodology: partial checks yield partial progress.
         UserLearningItemProgress.objects.update_or_create(user=user, learning_item=item,
             defaults={'progress_percent': min(99, round(evaluated.score * 100)), 'is_completed': False, 'completed_at': None})
+    record_unlocks(user, item.module.course, before, f'practice:{submission.pk}', item=item, submission=submission)
     return submission
 
 

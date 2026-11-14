@@ -1,6 +1,22 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import Certificate
+from .models import Certificate, LearningEvent
+
+
+@admin.register(LearningEvent)
+class LearningEventAdmin(admin.ModelAdmin):
+    list_display = ('id', 'created_at', 'user_id', 'kind', 'module_id', 'item_id', 'attempt_id', 'submission_id')
+    list_filter = ('kind',)
+    readonly_fields = tuple(field.name for field in LearningEvent._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Certificate)

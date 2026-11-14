@@ -2,11 +2,12 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
+from drf_spectacular.utils import extend_schema
 from common.permissions import is_admin
 from apps.education.access import can_access_test
 from apps.education.models import Lesson, LearningItem
 from .models import Test, TestAttempt
-from .serializers import TestAdminSerializer, TestStudentSerializer, QuestionAdminSerializer, QuestionStudentSerializer, AttemptSerializer
+from .serializers import TestAdminSerializer, TestStudentSerializer, QuestionAdminSerializer, QuestionStudentSerializer, AttemptSerializer, AttemptInput
 from .services import save_test, save_item_test, submit_attempt
 
 class TestView(GenericAPIView):
@@ -60,14 +61,15 @@ class AttemptView(GenericAPIView):
         if not is_admin(request.user): q = q.filter(user=request.user)
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(q, request)
-        return paginator.get_paginated_response(AttemptSerializer(page, many=True).data)
+        return paginator.get_paginated_response(AttemptSerializer(page, many=True, context={'request': request}).data)
 
+    @extend_schema(request=AttemptInput)
     def post(self, request, short_id):
         test = Test.objects.filter(lesson__short_id=short_id, lesson__deleted_at__isnull=True).first()
         if not test: raise NotFound()
         if not isinstance(request.data, dict): raise ValidationError({'answers': 'Ожидается объект'})
-        attempt = submit_attempt(test.id, request.user, request.data.get('answers'))
-        return Response(AttemptSerializer(attempt).data, status=201)
+        attempt = submit_attempt(test.id, request.user, request.data.get('answers'), request.data.get('request_id'))
+        return Response(AttemptSerializer(attempt, context={'request': request}).data, status=201)
 
 class AllAttemptsView(GenericAPIView):
     serializer_class = AttemptSerializer
@@ -77,7 +79,7 @@ class AllAttemptsView(GenericAPIView):
             q = q.filter(user=request.user)
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(q, request)
-        return paginator.get_paginated_response(AttemptSerializer(page, many=True).data)
+        return paginator.get_paginated_response(AttemptSerializer(page, many=True, context={'request': request}).data)
 
 
 class ItemTestView(GenericAPIView):
@@ -123,11 +125,12 @@ class ItemAttemptView(GenericAPIView):
             q = q.filter(user=request.user)
         paginator = PageNumberPagination()
         page = paginator.paginate_queryset(q, request)
-        return paginator.get_paginated_response(AttemptSerializer(page, many=True).data)
+        return paginator.get_paginated_response(AttemptSerializer(page, many=True, context={'request': request}).data)
 
+    @extend_schema(request=AttemptInput)
     def post(self, request, short_id):
         test = self.get_test(request, short_id)
         if not isinstance(request.data, dict):
             raise ValidationError({'answers': 'Ожидается объект'})
-        attempt = submit_attempt(test.id, request.user, request.data.get('answers'))
-        return Response(AttemptSerializer(attempt).data, status=201)
+        attempt = submit_attempt(test.id, request.user, request.data.get('answers'), request.data.get('request_id'))
+        return Response(AttemptSerializer(attempt, context={'request': request}).data, status=201)

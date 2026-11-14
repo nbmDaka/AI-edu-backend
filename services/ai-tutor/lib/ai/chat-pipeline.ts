@@ -1,5 +1,6 @@
 import type { InputMessage, SupportedLanguage } from '@/lib/ai/types';
 import { languageInstruction, noAnswerText, tutorIdentityText } from '@/lib/ai/language';
+import { learningContextInstructions, parseLearningContext } from '@/lib/ai/learning-context';
 
 function trimText(value: string, maxLength = 260): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -58,6 +59,7 @@ export function buildPrompt(params: {
  * - input: conversation history as user/assistant turns only
  */
 export function buildResponsesInput(params: {
+  learningContext?: ReturnType<typeof parseLearningContext>;
   query: string;
   history: InputMessage[];
   chunks: Array<{ label: string; text: string }>;
@@ -68,6 +70,7 @@ export function buildResponsesInput(params: {
     .join('\n\n');
 
   const instructions = [
+    learningContextInstructions(params.learningContext),
     'Ты AI-тьютор курса и отвечаешь только по релевантным материалам лекции.',
     'Если пользователь спрашивает, кто ты, отвечай: ты AI-тьютор этой лекции.',
     `Если контекст не содержит ответа на вопрос, ответь дословно: ${noAnswerText(params.language)}`,

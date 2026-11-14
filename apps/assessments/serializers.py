@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from .models import Test, Question, Option, TestAttempt
 
+
+class AttemptInput(serializers.Serializer):
+    answers = serializers.ListField(child=serializers.DictField())
+    request_id = serializers.UUIDField(required=False)
+
 class OptionAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = Option
@@ -36,6 +41,16 @@ class TestStudentSerializer(serializers.ModelSerializer):
         fields = ['id', 'lesson', 'title', 'description', 'passing_percent', 'max_attempts', 'version', 'questions']
 
 class AttemptSerializer(serializers.ModelSerializer):
+    adaptive_result = serializers.SerializerMethodField()
+
+    def get_adaptive_result(self, obj) -> dict | None:
+        from apps.education.recommendations import resolve_recommendations
+        result = obj.adaptive_result
+        if not result or 'recommendations' not in result:
+            return result
+        request = self.context.get('request')
+        return {**result, 'recommendations': resolve_recommendations(result['recommendations'], request.user if request else None)}
+
     test_title = serializers.CharField(source='test.title', read_only=True)
     course_title = serializers.SerializerMethodField()
     def get_course_title(self, obj) -> str | None:

@@ -119,8 +119,10 @@ test('first-sentence speech generation overlaps native warmup instead of waiting
   const warmup = new Promise(resolve => { releaseNative = resolve; });
   const speechReady = new Promise(resolve => { speechStarted = resolve; });
   const spoken = [];
+  let tutorPrompt;
   const server = createAvatarGateway({ ...options,
-    clientFactory: () => ({ chat: { completions: { create: async function* () {
+    clientFactory: () => ({ chat: { completions: { create: async function* (request) {
+      tutorPrompt = request.messages[0].content;
       yield { choices: [{ delta: { content: 'Короткий ответ. ' } }] };
       yield { choices: [{ delta: { content: 'Следующее предложение целиком.' } }] };
     } } } }),
@@ -140,10 +142,12 @@ test('first-sentence speech generation overlaps native warmup instead of waiting
   t.after(() => releaseNative());
   const response = await fetch(`http://127.0.0.1:${server.address().port}/api/avatar`, {
     method: 'POST', headers: { 'X-API-Key': env.API_SHARED_KEY },
-    body: JSON.stringify({ messages: [{ role: 'user', content: 'Test' }], lesson_content: 'Synthetic lesson.' }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'Test' }], lesson_content: 'Synthetic lesson.',
+      learning_context_prompt: 'SERVER LEARNING DATA: {"current":{"is_completed":true}}' }),
   });
   await speechReady;
   assert.deepEqual(spoken, ['Короткий ответ.', 'Следующее предложение целиком.']);
   releaseNative();
   assert.match(await response.text(), /event: done/);
+  assert.match(tutorPrompt, /SERVER LEARNING DATA:.*"is_completed":true/);
 });

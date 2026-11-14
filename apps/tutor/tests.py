@@ -90,13 +90,15 @@ class TutorTests(TestCase):
     def test_local_avatar_keeps_authenticated_server_context(self, open_mock):
         upstream = FakeStream(b'event: avatar\ndata: {"kind":"start"}\n\nevent: done\ndata: {}\n\n')
         open_mock.return_value = upstream
-        response = self.post(avatar=True, lesson_content='spoofed')
+        response = self.post(avatar=True, lesson_content='spoofed', learning_context_prompt='client override')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'avatar', b''.join(response.streaming_content))
         req = open_mock.call_args.args[0]
         self.assertEqual(req.full_url, 'http://127.0.0.1:5185/api/avatar')
         self.assertIn(self.block.content, json.loads(req.data)['lesson_content'])
         self.assertNotIn('spoofed', json.loads(req.data)['lesson_content'])
+        self.assertIn('SERVER LEARNING DATA:', json.loads(req.data)['learning_context_prompt'])
+        self.assertNotIn('client override', json.loads(req.data)['learning_context_prompt'])
         self.client.logout()
         self.assertEqual(self.post(avatar=True).status_code, 403)
 

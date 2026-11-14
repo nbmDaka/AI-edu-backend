@@ -30,6 +30,7 @@ class Option(models.Model):
         ordering = ['position', 'id']
 
 class TestAttempt(models.Model):
+    request_id = models.UUIDField(null=True, blank=True, editable=False)
     test = models.ForeignKey(Test, on_delete=models.PROTECT, related_name='attempts')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='attempts')
     test_version = models.PositiveIntegerField()
@@ -43,3 +44,4 @@ class TestAttempt(models.Model):
     completed_at = models.DateTimeField(auto_now_add=True)
     class Meta:
         ordering = ['-completed_at', '-id']
+        constraints = [models.UniqueConstraint(fields=['user', 'test', 'request_id'], name='unique_test_request')]

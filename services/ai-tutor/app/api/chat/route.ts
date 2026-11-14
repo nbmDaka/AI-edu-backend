@@ -19,6 +19,7 @@ import { estimateTokens, hashApiKey, jsonError, readApiKeyFromHeaders } from '@/
 import { retrieveRelevantChunksDetailed } from '@/lib/rag';
 import { retrieveIndexedCourseChunks } from '@/lib/ai/index-search';
 import type { InputMessage, SupportedLanguage, UsageSummary } from '@/lib/ai/types';
+import { parseLearningContext } from '@/lib/ai/learning-context';
 
 export const runtime = 'nodejs';
 
@@ -48,6 +49,7 @@ const client = new OpenAI({
 const encoder = new TextEncoder();
 
 type ChatRequestBody = {
+  learning_context?: unknown;
   session_id?: string;
   sessionId?: string;
   message_id?: string;
@@ -155,6 +157,16 @@ export async function POST(req: Request) {
   const userMessageId = String(body.message_id ?? '').trim() || randomUUID();
   const locateInLecture = Boolean(body.locateInLecture);
   const courseId = String(body.course_id ?? '').trim() || null;
+  let learningContext: ReturnType<typeof parseLearningContext>;
+  try {
+    if (body.learning_context !== undefined && (!process.env.API_SHARED_KEY ||
+        readApiKeyFromHeaders(req.headers) !== process.env.API_SHARED_KEY.trim() || req.headers.has('origin'))) {
+      return jsonError('Learning context requires a trusted server request.', 403);
+    }
+    learningContext = parseLearningContext(body.learning_context, courseId);
+  } catch {
+    return jsonError('Invalid learning_context.', 400);
+  }
   const courseVersionId = String(body.course_version_id ?? '').trim() || null;
   const lessonId = String(body.lesson_id ?? '').trim() || null;
   const lessonTitle = String(body.lesson_title ?? '').trim() || null;
@@ -337,6 +349,7 @@ export async function POST(req: Request) {
         messages: sanitizedMessages,
         query: retrievalQuery,
         chunks: retrieval.chunks.map((chunk) => chunk.text),
+        learning_context: learningContext,
       }),
     );
 
@@ -477,6 +490,7 @@ export async function POST(req: Request) {
         }
 
         const prompt = buildResponsesInput({
+          learningContext,
           query: latestUserMessage.content,
           history: sanitizedMessages,
           chunks: retrieval.chunks.map((chunk) => ({ label: chunk.label, text: chunk.text })),
