@@ -132,6 +132,8 @@ class PythonLabTests(TestCase):
         self.publish({**self.config, 'datasets': [{'media': media.pk, 'name': 'cars.csv', 'size': media.size, 'url': url}]})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        b''.join(response.streaming_content)
-        response.close()
+        # Exhausting the test client's stream closes the response safely without
+        # firing database connection cleanup inside TestCase's atomic block.
+        self.assertEqual(b''.join(response.streaming_content), b'Year,Price\n1,2')
+        self.assertTrue(response.closed)
         media.file.close()
