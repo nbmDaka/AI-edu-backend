@@ -47,7 +47,7 @@ class PracticeEngineTests(TestCase):
         types = [row['type'] for row in response.data]
         # Встроенные практики идут первыми; модуль «Виртуальные лаборатории» добавляет свои типы virtual_lab_* после них.
         builtin = [value for value in types if not value.startswith('virtual_lab_')]
-        self.assertEqual(builtin, ['lecture_workshop', 'practical_workshop', 'pedagogical_workshop', 'guided_assignment', 'python_lab'])
+        self.assertEqual(builtin, ['lecture_workshop', 'practical_workshop', 'pedagogical_workshop', 'guided_assignment', 'python_lab', 'biometric_lab'])
         self.assertEqual(types[:len(builtin)], builtin)
         self.assertEqual(response.data[0]['grading'], 'self_assessment')
         self.assertIn('criteria', response.data[0]['capabilities'])
